@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vancomycin AUC 劑量計算器</title>
+  <meta name="description" content="繁體中文萬古黴素 AUC 導向劑量計算器：經驗起始劑量 + 雙點一階（Sawchuk-Zaske）反算 AUC24 與調整建議。基於 Rybak 2020 共識，純前端、資料不離開瀏覽器。">
+  <meta name="author" content="liangRXdev">
+  <meta name="theme-color" content="#1565C0">
+  <meta name="color-scheme" content="light">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="萬古黴素 AUC 劑量計算器">
+  <meta property="og:description" content="繁中、純前端的 Vancomycin AUC-guided 劑量工具（Rybak 2020）。">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="header">
+    <div class="header__inner">
+      <div class="header__brand">
+        <span class="header__formula">AUC</span>
+        <div>
+          <h1 class="header__title">萬古黴素 AUC 劑量計算器</h1>
+          <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
+        </div>
+      </div>
+      <span class="header__version">v0.1.0</span>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ── Tab 切換 ── -->
+    <div class="tabs" role="tablist">
+      <button class="tabs__btn tabs__btn--active" id="tab-empiric" role="tab" aria-selected="true" data-panel="panel-empiric">
+        <span class="tabs__num">1</span> 經驗起始劑量
+        <span class="tabs__hint">尚無血中濃度</span>
+      </button>
+      <button class="tabs__btn" id="tab-auc" role="tab" aria-selected="false" data-panel="panel-auc">
+        <span class="tabs__num">2</span> 雙點反算 AUC + 調整
+        <span class="tabs__hint">已有兩點濃度</span>
+      </button>
+    </div>
+
+    <!-- ══════════ Mode 1：經驗起始 ══════════ -->
+    <section class="panel panel--active" id="panel-empiric" role="tabpanel">
+      <div class="card">
+        <h2 class="card__title"><span class="card__step">病人</span>基本資料</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="e-age">年齡 <span class="field__unit">歲</span></label>
+            <input class="field__input" type="number" id="e-age" min="18" max="120" step="1" placeholder="65">
+          </div>
+          <div class="field">
+            <label class="field__label">性別</label>
+            <div class="segmented">
+              <label class="segmented__opt"><input type="radio" name="e-sex" value="M" checked><span>男</span></label>
+              <label class="segmented__opt"><input type="radio" name="e-sex" value="F"><span>女</span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="e-height">身高 <span class="field__unit">cm</span></label>
+            <input class="field__input" type="number" id="e-height" min="120" max="220" step="0.1" placeholder="170">
+          </div>
+          <div class="field">
+            <label class="field__label" for="e-tbw">體重 (實際) <span class="field__unit">kg</span></label>
+            <input class="field__input" type="number" id="e-tbw" min="30" max="300" step="0.1" placeholder="70">
+          </div>
+          <div class="field">
+            <label class="field__label" for="e-scr">血清肌酸酐 SCr <span class="field__unit">mg/dL</span></label>
+            <input class="field__input" type="number" id="e-scr" min="0.1" max="15" step="0.01" placeholder="1.0">
+          </div>
+          <div class="field field--full">
+            <label class="segmented__opt segmented__opt--check">
+              <input type="checkbox" id="e-icu"><span>重症 / 嚴重 MRSA 感染（給予負荷劑量）</span>
+            </label>
+          </div>
+          <div class="field field--full">
+            <label class="field__label" for="e-target">目標 AUC₂₄　<span class="field__unit slider__val" id="e-target-val">500</span> mg·h/L</label>
+            <input class="slider" type="range" id="e-target" min="400" max="600" step="10" value="500">
+            <div class="slider__scale"><span>400</span><span>500</span><span>600</span></div>
+          </div>
+        </div>
+        <button class="btn btn--primary" id="e-calc">計算起始劑量</button>
+      </div>
+
+      <div class="card card--result" id="e-result" hidden>
+        <h2 class="card__title">建議</h2>
+        <div class="result-grid" id="e-output"></div>
+        <div class="warnings" id="e-warnings"></div>
+        <div class="plan">
+          <div class="plan__head"><span>📋 Plan / 建議（可複製）</span><button class="plan__copy" id="e-copy" type="button">複製</button></div>
+          <pre class="plan__body" id="e-plan"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ Mode 2：雙點反算 ══════════ -->
+    <section class="panel" id="panel-auc" role="tabpanel" hidden>
+      <div class="card">
+        <h2 class="card__title"><span class="card__step">給藥</span>方案</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="a-dose">本間隔給藥量 <span class="field__unit">mg</span></label>
+            <input class="field__input" type="number" id="a-dose" min="100" step="50" placeholder="1000">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-tau">給藥間隔 τ <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="a-tau" min="6" max="48" step="1" placeholder="12">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-tinf">輸注時長 <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="a-tinf" min="0.5" max="4" step="0.25" placeholder="1">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-mic">MIC <span class="field__unit">mg/L</span></label>
+            <input class="field__input" type="number" id="a-mic" min="0.25" max="4" step="0.25" placeholder="1（預設）">
+          </div>
+        </div>
+
+        <h3 class="subhead">兩點濃度（間隔內任兩時刻，時刻＝距本次<b>輸注開始</b>的小時數）</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="a-c1">濃度 1 <span class="field__unit">mg/L</span></label>
+            <input class="field__input" type="number" id="a-c1" min="0.1" step="0.1" placeholder="20">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-t1">時刻 1 <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="a-t1" min="0" step="0.1" placeholder="3">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-c2">濃度 2 <span class="field__unit">mg/L</span></label>
+            <input class="field__input" type="number" id="a-c2" min="0.1" step="0.1" placeholder="7">
+          </div>
+          <div class="field">
+            <label class="field__label" for="a-t2">時刻 2 <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="a-t2" min="0" step="0.1" placeholder="11.5">
+          </div>
+        </div>
+        <p class="hint hint--muted">💡 峰通常於輸注結束後 1–2h 採（此值 = 輸注時長 + 1~2）、谷於間隔末採。兩點皆須在輸注結束後。</p>
+        <button class="btn btn--primary" id="a-calc">計算 AUC 與調整建議</button>
+      </div>
+
+      <div class="card card--result" id="a-result" hidden>
+        <h2 class="card__title">結果</h2>
+        <div class="auc-hero" id="a-hero"></div>
+        <div class="result-grid" id="a-pk"></div>
+        <h3 class="subhead">達目標（AUC 500）各間隔劑量建議</h3>
+        <div class="table-scroll">
+          <table class="dose-table" id="a-table"></table>
+        </div>
+
+        <h3 class="subhead">自訂方案試算（以本次個人化 PK 估算）</h3>
+        <div class="sim">
+          <div class="sim__row">
+            <div class="field">
+              <label class="field__label" for="sim-dose">劑量 <span class="field__unit">mg</span></label>
+              <input class="field__input" type="number" id="sim-dose" min="100" step="50">
+            </div>
+            <div class="field">
+              <label class="field__label" for="sim-tau">間隔 <span class="field__unit">h</span></label>
+              <input class="field__input" type="number" id="sim-tau" min="4" max="72" step="1">
+            </div>
+            <button class="btn btn--sim" id="sim-calc" type="button">試算</button>
+          </div>
+          <div class="sim__out" id="sim-out"></div>
+        </div>
+
+        <div class="warnings" id="a-warnings"></div>
+        <div class="plan">
+          <div class="plan__head"><span>📋 Plan / 建議（可複製）</span><button class="plan__copy" id="a-copy" type="button">複製</button></div>
+          <pre class="plan__body" id="a-plan"></pre>
+        </div>
+        <details class="formula">
+          <summary>顯示計算式（Sawchuk-Zaske 一階、兩段式 AUC）</summary>
+          <div id="a-formula" class="formula__body"></div>
+        </details>
+      </div>
+    </section>
+
+    <footer class="disclaimer">
+      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。假設一室模型、近穩態採血；MIC 預設 1 mg/L（BMD）。血液透析 / CRRT / 持續輸注 / Bayesian 未涵蓋。</p>
+      <p class="disclaimer__src">證據：Rybak 2020 ASHP/IDSA/PIDS/SIDP 共識 · Crass 2018（肥胖）· 計算法：Sawchuk-Zaske first-order</p>
+    </footer>
+
+  </main>
+
+  <script src="js/constants.js"></script>
+  <script src="js/pk.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

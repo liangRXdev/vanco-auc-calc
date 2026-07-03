@@ -1,0 +1,14 @@
+# 暫存 / 系統
+.DS_Store
+Thumbs.db
+*.log
+
+# 本機測試用臨時 server（勿提交）
+server.js
+
+# 編輯器
+.vscode/
+.idea/
+
+# 依賴（本專案無，但保險）
+node_modules/
