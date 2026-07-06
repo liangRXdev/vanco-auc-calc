@@ -28,7 +28,7 @@
           <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
         </div>
       </div>
-      <span class="header__version">v0.1.0</span>
+      <span class="header__version">v0.2.0</span>
     </div>
   </header>
 
@@ -43,6 +43,10 @@
       <button class="tabs__btn" id="tab-auc" role="tab" aria-selected="false" data-panel="panel-auc">
         <span class="tabs__num">2</span> 雙點反算 AUC + 調整
         <span class="tabs__hint">已有兩點濃度</span>
+      </button>
+      <button class="tabs__btn" id="tab-bayes" role="tab" aria-selected="false" data-panel="panel-bayes">
+        <span class="tabs__num">3</span> Bayesian AUC
+        <span class="tabs__hint">1–2 點·可非穩態</span>
       </button>
     </div>
 
@@ -182,15 +186,110 @@
       </div>
     </section>
 
+    <!-- ══════════ Mode 3：Bayesian MAP ══════════ -->
+    <section class="panel" id="panel-bayes" role="tabpanel" hidden>
+      <div class="card">
+        <h2 class="card__title"><span class="card__step">病人</span>基本資料</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="b-age">年齡 <span class="field__unit">歲</span></label>
+            <input class="field__input" type="number" id="b-age" min="18" max="120" step="1" placeholder="65">
+          </div>
+          <div class="field">
+            <label class="field__label">性別</label>
+            <div class="segmented">
+              <label class="segmented__opt"><input type="radio" name="b-sex" value="M" checked><span>男</span></label>
+              <label class="segmented__opt"><input type="radio" name="b-sex" value="F"><span>女</span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-height">身高 <span class="field__unit">cm</span></label>
+            <input class="field__input" type="number" id="b-height" min="120" max="220" step="0.1" placeholder="170">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-tbw">體重 (實際) <span class="field__unit">kg</span></label>
+            <input class="field__input" type="number" id="b-tbw" min="30" max="300" step="0.1" placeholder="70">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-scr">血清肌酸酐 SCr <span class="field__unit">mg/dL</span></label>
+            <input class="field__input" type="number" id="b-scr" min="0.1" max="15" step="0.01" placeholder="1.0">
+          </div>
+          <div class="field field--full">
+            <label class="segmented__opt segmented__opt--check">
+              <input type="checkbox" id="b-dial"><span>間歇性血液透析（Goti 透析共變數：CL×0.7、Vc×0.5）</span>
+            </label>
+          </div>
+        </div>
+
+        <h3 class="subhead">現行給藥方案</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="b-dose">維持劑量 <span class="field__unit">mg</span></label>
+            <input class="field__input" type="number" id="b-dose" min="100" step="50" placeholder="1000">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-tau">給藥間隔 τ <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="b-tau" min="6" max="48" step="1" placeholder="12">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-tinf">輸注時長 <span class="field__unit">h</span></label>
+            <input class="field__input" type="number" id="b-tinf" min="0.5" max="4" step="0.25" placeholder="1">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-ndose">已給劑數 <span class="field__unit">劑</span></label>
+            <input class="field__input" type="number" id="b-ndose" min="1" max="60" step="1" placeholder="4">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-mic">MIC <span class="field__unit">mg/L</span></label>
+            <input class="field__input" type="number" id="b-mic" min="0.25" max="4" step="0.25" placeholder="1（預設）">
+          </div>
+          <div class="field field--full">
+            <label class="field__label" for="b-target">目標 AUC₂₄　<span class="field__unit slider__val" id="b-target-val">500</span> mg·h/L</label>
+            <input class="slider" type="range" id="b-target" min="400" max="600" step="10" value="500">
+            <div class="slider__scale"><span>400</span><span>500</span><span>600</span></div>
+          </div>
+        </div>
+
+        <h3 class="subhead">血中濃度（1–2 點；時刻＝距<b>最近一劑</b>輸注開始的小時數）</h3>
+        <div id="b-levels" class="levels"></div>
+        <button class="btn btn--sim" id="b-add" type="button">＋ 新增第 2 點</button>
+        <p class="hint hint--muted">💡 Bayesian 最大優勢：<b>單一濃度、非穩態、早至首劑後</b>即可估 AUC。單點時 CL 更新、體積貼近族群先驗；有峰+谷則更精確。</p>
+        <button class="btn btn--primary" id="b-calc">Bayesian 估計 AUC</button>
+      </div>
+
+      <div class="card card--result" id="b-result" hidden>
+        <h2 class="card__title">結果</h2>
+        <div class="auc-hero" id="b-hero"></div>
+        <div class="result-grid" id="b-pk"></div>
+
+        <h3 class="subhead">擬合檢核（實測 vs 模型預測）</h3>
+        <div class="table-scroll"><table class="dose-table" id="b-fit"></table></div>
+
+        <h3 class="subhead">達目標劑量建議（同間隔 q<span id="b-rec-tau">—</span>h）</h3>
+        <div class="result-grid" id="b-rec"></div>
+
+        <div class="warnings" id="b-warnings"></div>
+        <div class="plan">
+          <div class="plan__head"><span>📋 Plan / 建議（可複製）</span><button class="plan__copy" id="b-copy" type="button">複製</button></div>
+          <pre class="plan__body" id="b-plan"></pre>
+        </div>
+        <details class="formula">
+          <summary>顯示模型細節（Goti 2018 先驗 · MAP η · 目標函數）</summary>
+          <div id="b-formula" class="formula__body"></div>
+        </details>
+      </div>
+    </section>
+
     <footer class="disclaimer">
-      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。假設一室模型、近穩態採血；MIC 預設 1 mg/L（BMD）。血液透析 / CRRT / 持續輸注 / Bayesian 未涵蓋。</p>
-      <p class="disclaimer__src">證據：Rybak 2020 ASHP/IDSA/PIDS/SIDP 共識 · Crass 2018（肥胖）· 計算法：Sawchuk-Zaske first-order</p>
+      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。Mode 1/2 假設一室模型；Mode 3（Bayesian）用 Goti 2018 二室族群 PK 先驗（住院成人；重症/兒童外推性有限）。MIC 預設 1 mg/L。CRRT / 持續輸注未涵蓋。</p>
+      <p class="disclaimer__src">證據：Rybak 2020 ASHP/IDSA/PIDS/SIDP 共識 · Crass 2018（肥胖）· Goti 2018（Bayesian 先驗）· 計算法：Sawchuk-Zaske first-order／MAP（Sheiner-Beal）</p>
     </footer>
 
   </main>
 
   <script src="js/constants.js"></script>
   <script src="js/pk.js"></script>
+  <script src="js/bayes.js"></script>
   <script src="js/ui.js"></script>
 </body>
 </html>

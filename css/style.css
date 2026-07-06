@@ -205,6 +205,12 @@ body {
   height: fit-content;
 }
 .btn--sim:hover { background: var(--color-primary-light); }
+/* Mode 3 動態濃度列 */
+.levels__row { grid-template-columns: 1fr 1fr auto; align-items: end; margin-bottom: .6rem; }
+.levels__del { align-self: end; padding: .55rem 1rem; font-size: .9rem; background: var(--color-amber, #b26a00); }
+.levels__del:hover { filter: brightness(1.1); }
+#b-add { margin-bottom: .4rem; }
+@media (max-width: 560px) { .levels__row { grid-template-columns: 1fr 1fr; } .levels__del { grid-column: 1 / -1; } }
 .sim__out { margin-top: .8rem; }
 .sim__out:empty { display: none; }
 .sim-result { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: .6rem; margin-bottom: .6rem; }

@@ -249,6 +249,165 @@
   $('sim-calc').addEventListener('click', renderSim);
   ['sim-dose', 'sim-tau'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') renderSim(); }));
 
+  // ---------- Mode 3：Bayesian MAP ----------
+  function levelRow(i) {
+    const cPh = i === 1 ? '15' : '25';
+    const tPh = i === 1 ? '11.5' : '2';
+    return `<div class="form-grid levels__row" id="b-row-${i}">
+      <div class="field">
+        <label class="field__label" for="b-c${i}">濃度 ${i} <span class="field__unit">mg/L</span></label>
+        <input class="field__input" type="number" id="b-c${i}" min="0.1" step="0.1" placeholder="${cPh}">
+      </div>
+      <div class="field">
+        <label class="field__label" for="b-t${i}">時刻 ${i} <span class="field__unit">h（距最近一劑）</span></label>
+        <input class="field__input" type="number" id="b-t${i}" min="0" step="0.1" placeholder="${tPh}">
+      </div>
+      ${i === 2 ? '<button class="btn btn--sim levels__del" id="b-del-2" type="button">✕ 移除</button>' : ''}
+    </div>`;
+  }
+  (function initBayesLevels() {
+    if (!$('b-levels')) return;
+    $('b-levels').innerHTML = levelRow(1) + levelRow(2);
+    $('b-row-2').style.display = 'none';
+    $('b-add').addEventListener('click', () => {
+      $('b-row-2').style.display = '';
+      $('b-add').style.display = 'none';
+    });
+    $('b-del-2').addEventListener('click', () => {
+      $('b-row-2').style.display = 'none';
+      $('b-add').style.display = '';
+      $('b-c2').value = ''; $('b-t2').value = '';
+      markError(['b-c2', 'b-t2'], false);
+    });
+  })();
+  $('b-target') && $('b-target').addEventListener('input', () => { $('b-target-val').textContent = $('b-target').value; });
+
+  function alertBayes(msg) {
+    $('b-hero').innerHTML = ''; $('b-pk').innerHTML = ''; $('b-fit').innerHTML = '';
+    $('b-rec').innerHTML = ''; $('b-formula').innerHTML = '';
+    renderWarnings($('b-warnings'), [{ level: 'error', msg }]);
+    show('b');
+  }
+
+  $('b-calc') && $('b-calc').addEventListener('click', () => {
+    const baseIds = ['b-age', 'b-height', 'b-tbw', 'b-scr', 'b-dose', 'b-tau', 'b-tinf', 'b-ndose'];
+    const bad = baseIds.filter((id) => !isFinite(num(id)) || num(id) <= 0);
+    markError(baseIds, false); markError(bad, true);
+    if (bad.length) { alertBayes('請完整填入病人資料與現行給藥方案（數值須 > 0）。'); return; }
+    if (num('b-age') < 18) { markError(['b-age'], true); alertBayes('本工具僅適用成人（≥18 歲）。'); return; }
+
+    // 濃度點（1–2）
+    const l2on = $('b-row-2').style.display !== 'none';
+    const idxs = l2on ? [1, 2] : [1];
+    const levels = []; let levelBad = false;
+    markError(['b-c1', 'b-t1', 'b-c2', 'b-t2'], false);
+    idxs.forEach((i) => {
+      const c = num('b-c' + i), t = num('b-t' + i);
+      if (isFinite(c) && c > 0 && isFinite(t) && t >= 0) levels.push({ conc: c, tRel: t });
+      else { levelBad = true; markError(['b-c' + i, 'b-t' + i], true); }
+    });
+    if (!levels.length || levelBad) { alertBayes('請至少填入 1 點有效濃度（濃度 > 0、時刻 ≥ 0）。'); return; }
+
+    const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = Math.round(num('b-ndose'));
+    const sexMale = document.querySelector('input[name="b-sex"]:checked').value === 'M';
+    const dialysis = $('b-dial').checked;
+    const mic = isFinite(num('b-mic')) && num('b-mic') > 0 ? num('b-mic') : VANCO.MIC_DEFAULT;
+    const targetAuc = num('b-target') || VANCO.AUC_TARGET_DEFAULT;
+
+    // CrCL 用體重（沿用 Mode 1 選用：消瘦 TBW / 肥胖 AdjBW）
+    const ibw = PK.idealBodyWeight(sexMale, num('b-height'));
+    const cw = PK.crclDosingWeight(num('b-tbw'), ibw);
+
+    // 給藥史：N 劑於 0,τ,…,(N−1)τ；濃度絕對時刻 = 最近一劑起始 + tRel
+    const doses = []; for (let i = 0; i < N; i++) doses.push({ time: i * tau, dose, tInf });
+    const lastStart = (N - 1) * tau;
+    const obs = levels.map((l) => ({ time: lastStart + l.tRel, conc: l.conc }));
+
+    const r = BAYES.bayesianMAP({
+      cov: { age: num('b-age'), weightKg: cw.weight, scr: num('b-scr'), sexMale, dialysis },
+      tbw: num('b-tbw'), doses, obs, currentDailyDose: dose * (24 / tau),
+    });
+
+    // Hero
+    const auc = r.auc24Current;
+    const st = auc > VANCO.AUC_AKI_THRESHOLD ? 'high' : auc < VANCO.AUC_TARGET_MIN ? 'low' : 'ok';
+    const tag = st === 'ok' ? '達標' : st === 'low' ? '偏低' : '偏高';
+    $('b-hero').className = `auc-hero auc-hero--${st}`;
+    $('b-hero').innerHTML =
+      `<div><div class="auc-hero__num">${fmt(auc, 0)}</div><div class="auc-hero__label">AUC₂₄ (mg·h/L)　目標 400–600</div></div>
+       <div><div class="auc-hero__num">${fmt(auc / mic, 0)}</div><div class="auc-hero__label">AUC/MIC（MIC ${mic}）</div></div>
+       <span class="auc-hero__tag">${tag}</span>`;
+
+    // 個體 PK
+    const shrink = (eta) => `${eta >= 0 ? '+' : ''}${(eta * 100).toFixed(0)}%`;
+    $('b-pk').innerHTML =
+      metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0), 'mL/min') +
+      metric('個體 CL', fmt(r.cl, 2), 'L/h', true) +
+      metric('先驗 CL → 個體', `${fmt(r.prior.cl, 2)} → ${fmt(r.cl, 2)}`, `η ${shrink(r.eta.cl)}`) +
+      metric('中央室 Vc', fmt(r.vc, 1), 'L') +
+      metric('周邊室 Vp', fmt(r.vp, 1), 'L') +
+      metric('穩態分布體積 Vss', fmt(r.vss, 1), 'L');
+
+    // 擬合檢核
+    const fitRows = r.predictedAtObs.map((p, i) => {
+      const d = p.predicted - p.observed;
+      return `<tr><td>第 ${i + 1} 點 (t=${fmt(levels[i].tRel, 1)}h)</td>
+        <td>${fmt(p.observed, 1)}</td><td>${fmt(p.predicted, 1)}</td>
+        <td style="color:${Math.abs(d) <= 3 ? 'var(--color-green)' : 'var(--color-amber)'}">${d >= 0 ? '+' : ''}${fmt(d, 1)}</td></tr>`;
+    }).join('');
+    $('b-fit').innerHTML =
+      `<thead><tr><th>採血點</th><th>實測 (mg/L)</th><th>模型預測</th><th>差值</th></tr></thead><tbody>${fitRows}</tbody>`;
+
+    // 建議劑量（同間隔達目標 AUC）
+    const recTDD = r.recommendTDD(targetAuc);
+    const recDose = PK.roundDose(recTDD * (tau / 24), 250);
+    const recExp = BAYES.steadyStateExposure(recDose, tau, tInf, { cl: r.cl, vc: r.vc, vp: r.vp, q: r.q });
+    $('b-rec-tau').textContent = tau;
+    const impractical = recDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX;
+    $('b-rec').innerHTML =
+      metric('建議劑量', `${recDose}${impractical ? '⚠' : ''} q${tau}h`, `＝${fmt(recDose * (24 / tau), 0)}/day`, true) +
+      metric(`達目標 AUC ${targetAuc}`, fmt(recExp.auc24, 0), 'mg·h/L', true) +
+      metric('穩態預測峰 / 谷', `${fmt(recExp.peak, 1)} / ${fmt(recExp.trough, 1)}`, 'mg/L');
+
+    // 警示
+    const w = [];
+    if (st === 'high') w.push({ level: 'warn', msg: `AUC₂₄ ${fmt(auc, 0)} > ${VANCO.AUC_AKI_THRESHOLD}：AKI 風險上升，建議依上表減量。` });
+    if (st === 'low') w.push({ level: 'warn', msg: `AUC₂₄ ${fmt(auc, 0)} < ${VANCO.AUC_TARGET_MIN}：暴露不足，建議依上表加量。` });
+    if (levels.length === 1) w.push({ level: 'info', msg: '單一濃度：CL 已依實測更新，但 Vc/Vp 主要來自族群先驗；若需更可靠峰值估計，建議補第 2 點（峰）。' });
+    if (levels.some((l) => l.tRel < tInf)) w.push({ level: 'info', msg: '有採血點落在輸注期內（分布相）：二室 Bayesian 可處理，此為相對雙點法的優勢。' });
+    if (dialysis) w.push({ level: 'info', msg: '血液透析：Goti 以間歇性高通量 HD 二元共變數建模，無法反映實際透析時段/CRRT；透析後回彈請加強監測。' });
+    if (mic >= VANCO.MIC_ALT_AGENT) w.push({ level: 'warn', msg: `MIC ≥ ${VANCO.MIC_ALT_AGENT} mg/L：傳統劑量難達 AUC/MIC ≥400，考慮換藥。` });
+    w.push({ level: 'info', msg: '先驗模型：Goti 2018（住院成人）。重症病人先驗精度較低（Narayan 2021）；本估計須臨床覆核。' });
+    renderWarnings($('b-warnings'), w);
+
+    // Plan
+    const sex = sexMale ? '男' : '女';
+    const lv = levels.map((l, i) => `C${i + 1} ${l.conc} mg/L @最近一劑後 ${l.tRel}h`).join('、');
+    const pl = [
+      '【Vancomycin Bayesian AUC 評估（Goti 2018 先驗）】',
+      `病人：${num('b-age')}歲 ${sex}，${num('b-tbw')}kg / ${num('b-height')}cm，SCr ${num('b-scr')}${dialysis ? '，血液透析' : ''}`,
+      `現行：${dose} mg q${tau}h（第 ${N} 劑，日劑量 ${fmt(dose * (24 / tau), 0)} mg）`,
+      `濃度：${lv}（MIC ${mic}）`,
+      `個體 PK：CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}）、Vc ${fmt(r.vc, 1)}L、Vp ${fmt(r.vp, 1)}L、CrCl ${fmt(r.crcl, 0)}`,
+      `目前 AUC₂₄ = ${fmt(auc, 0)} mg·h/L（AUC/MIC ${fmt(auc / mic, 0)}）→ ${tag}`,
+      `建議：${recDose} mg q${tau}h（${fmt(recDose * (24 / tau), 0)} mg/day）→ 預測 AUC ${fmt(recExp.auc24, 0)}、穩態峰/谷 ${fmt(recExp.peak, 1)}/${fmt(recExp.trough, 1)}`,
+      '監測：調整後 24–48h 複驗；Goti 先驗（住院成人），須專業覆核。',
+    ];
+    $('b-plan').textContent = pl.join('\n');
+
+    // 模型細節
+    $('b-formula').innerHTML =
+      `先驗（Goti 2018，共變數代入）：\n` +
+      `  TVCL = 4.5×(CrCl/120)^0.8×0.7^DIAL = ${fmt(r.prior.cl, 3)} L/h\n` +
+      `  TVVc = 58.4×(WT/70)×0.5^DIAL = ${fmt(r.prior.vc, 2)} L；Vp ${fmt(r.prior.vp, 1)}；Q ${fmt(r.prior.q, 1)}\n` +
+      `MAP 個體 η（P=TVP×e^η）：ηCL ${fmt(r.eta.cl, 3)}、ηVc ${fmt(r.eta.vc, 3)}、ηVp ${fmt(r.eta.vp, 3)}\n` +
+      `目標函數 Obj = Σ(Cpred−Cobs)²/SD² + Σηₖ²/ωₖ² = ${fmt(r.objective, 3)}\n` +
+      `AUC₂₄ = 每日總量 / 個體 CL = ${fmt(dose * (24 / tau), 0)} / ${fmt(r.cl, 2)} = ${fmt(auc, 1)} mg·h/L`;
+
+    show('b');
+  });
+  wireCopy('b-copy', () => $('b-plan').textContent);
+
   // ---------- 顯示 / 錯誤 ----------
   function show(prefix) {
     const el = $(prefix + '-result');

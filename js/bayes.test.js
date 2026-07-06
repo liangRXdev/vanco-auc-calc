@@ -116,5 +116,12 @@ const map1 = BAYES.bayesianMAP({ cov, tbw: 80, doses: dh, obs: singleObs });
 console.log(`  單點 η: CL=${map1.eta.cl.toFixed(3)}, Vc=${map1.eta.vc.toFixed(3)}, Vp=${map1.eta.vp.toFixed(3)}`);
 ok('單 trough：|η_Vp| 小於 |η_CL|（先驗主導體積）', Math.abs(map1.eta.vp) < Math.abs(map1.eta.cl) + 1e-9);
 
+// ---------- 穩態暴露 helper ----------
+console.log('\n--- steadyStateExposure ---');
+const sse = BAYES.steadyStateExposure(1500, 12, 1, { cl: 4.7, vc: 60, vp: 38.4, q: 6.5 });
+near('穩態 AUC24 = 3000/4.7', sse.auc24, 3000 / 4.7, 1e-6);
+ok('峰 > 谷', sse.peak > sse.trough);
+console.log(`  1500 q12h → 峰 ${sse.peak.toFixed(1)} / 谷 ${sse.trough.toFixed(1)} mg/L、AUC24 ${sse.auc24.toFixed(0)}`);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

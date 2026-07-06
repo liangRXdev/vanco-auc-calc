@@ -247,9 +247,22 @@
     };
   }
 
+  /**
+   * 以個體 PK 模擬某方案（dose/tau/tInf）的穩態峰(輸注末)、谷(間隔末)、AUC24。
+   * 供結果頁「建議劑量」顯示；模擬至穩態（≥15 劑或 ~10 天）。
+   */
+  function steadyStateExposure(dose, tau, tInf, pk) {
+    const N = Math.max(15, Math.ceil(240 / tau));
+    const doses = [];
+    for (let i = 0; i < N; i++) doses.push({ time: i * tau, dose, tInf });
+    const last = (N - 1) * tau;
+    const [peak, trough] = simulateConc(doses, [last + tInf, last + tau], pk);
+    return { peak, trough, auc24: dose * (24 / tau) / pk.cl };
+  }
+
   const api = {
     gotiCrCl, priorTypicalValues, simulateConc,
-    residualSD, objective, nelderMead, bayesianMAP,
+    residualSD, objective, nelderMead, bayesianMAP, steadyStateExposure,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
