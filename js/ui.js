@@ -111,8 +111,25 @@
       `—— 維持以族群 CL（Matzke）反推 AUC；負荷 mg/kg TBW。本工具僅供輔助，須專業覆核。`
     );
     $('e-plan').textContent = lines.join('\n');
+
+    // 評估 Assessment（SOAP-A：臨床判讀）
+    const eObese = num('e-tbw') > CG.OBESE_TBW_OVER_IBW * r.ibw;
+    const eAucOk = r.predictedAuc24 >= VANCO.AUC_TARGET_MIN && r.predictedAuc24 <= VANCO.AUC_TARGET_MAX;
+    const eA = [
+      '【Vancomycin 評估 Assessment】（經驗起始，尚無血中濃度）',
+      `病人：${num('e-age')}歲 ${sex}，${num('e-tbw')}kg / ${num('e-height')}cm，SCr ${num('e-scr')} mg/dL`,
+      `腎功能：CrCl (Cockcroft-Gault，${r.crclWeight.label} ${fmt(r.crclWeight.weight, 1)}kg) = ${fmt(r.crcl, 0)} mL/min；族群 CL (Matzke) ${fmt(r.clPop, 2)} L/h`,
+      `建議方案（${r.maintenanceDose} q${r.maintenanceInterval}h）預測 AUC₂₄ ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）→ ${eAucOk ? '達標' : '偏離，需檢視'}`,
+    ];
+    if (icu) eA.push(`重症/嚴重 MRSA：已納入負荷 ${r.loadingDose} mg（TBW）。`);
+    if (eObese) eA.push('肥胖：族群 CL 為粗估，建議儘早雙點/Bayesian 驗證。');
+    if (r.crcl < 30) eA.push('腎功能不全：間隔已延長，須密切監測。');
+    eA.push('屬經驗估計，須 24–48h 內採濃度驗證。');
+    $('e-assess').textContent = eA.join('\n');
+
     show('e');
   });
+  wireCopy('e-assess-copy', () => $('e-assess').textContent);
   wireCopy('e-copy', () => $('e-plan').textContent);
   // 滑桿即時顯示目標 AUC 值
   $('e-target').addEventListener('input', () => { $('e-target-val').textContent = $('e-target').value; });
@@ -213,6 +230,16 @@
     pl.push('—— Sawchuk-Zaske first-order；本工具僅供輔助，須專業覆核。');
     $('a-plan').textContent = pl.join('\n');
 
+    // 評估 Assessment（SOAP-A：臨床判讀）
+    const aA = [
+      '【Vancomycin 評估 Assessment】（雙點反算，Sawchuk-Zaske）',
+      `目前 ${input.dose} mg q${input.tau}h（${fmt(r.tddCurrent, 0)} mg/day）→ AUC₂₄ ${fmt(r.auc24, 0)}（AUC/MIC ${fmt(r.aucOverMic, 0)}，MIC ${mic}）→ ${statusTxt}`,
+      `個體 PK：CL ${fmt(r.cl, 2)} L/h、t½ ${fmt(r.halfLife, 1)} h、Vd ${fmt(r.vd, 1)} L；預測峰/谷 ${fmt(r.cMaxTrue, 1)}/${fmt(r.cMinTrue, 1)} mg/L`,
+      st === 'ok' ? '暴露達標，維持現方案，24–48h 後複驗。' : `暴露${st === 'low' ? '不足' : '偏高'}，需調整日劑量至 ~${fmt(r.tddTarget, 0)} mg（達 AUC 500）。`,
+    ];
+    if (mic >= VANCO.MIC_ALT_AGENT) aA.push(`MIC ≥ ${VANCO.MIC_ALT_AGENT}：傳統劑量難達標，考慮換藥。`);
+    $('a-assess').textContent = aA.join('\n');
+
     // 自訂試算：存個人化 PK，並以建議方案預填
     simCtx = { ke: r.ke, vd: r.vd, cl: r.cl, mic, tInf: r.tInf };
     const recOpt = r.intervalOptions.find((o) => o.intervalH === input.tau) || r.intervalOptions[1];
@@ -222,6 +249,7 @@
 
     show('a');
   });
+  wireCopy('a-assess-copy', () => $('a-assess').textContent);
   wireCopy('a-copy', () => $('a-plan').textContent);
 
   // 自訂方案試算
@@ -395,6 +423,19 @@
     ];
     $('b-plan').textContent = pl.join('\n');
 
+    // 評估 Assessment（SOAP-A：臨床判讀）
+    const clStatus = r.eta.cl > 0.05 ? '清除較族群先驗快' : r.eta.cl < -0.05 ? '清除較族群先驗慢' : '清除接近族群先驗';
+    const bMaxResid = Math.max(...r.predictedAtObs.map((p) => Math.abs(p.predicted - p.observed)));
+    const bA = [
+      '【Vancomycin 評估 Assessment】（Bayesian，Goti 2018 先驗）',
+      `目前 ${dose} mg q${tau}h（${fmt(dose * (24 / tau), 0)} mg/day，第 ${N} 劑）→ AUC₂₄ ${fmt(auc, 0)}（AUC/MIC ${fmt(auc / mic, 0)}，MIC ${mic}）→ ${tag}`,
+      `個體 CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}；CrCl ${fmt(r.crcl, 0)} mL/min`,
+      `資料信心：${levels.length === 1 ? '單一濃度（Vc/Vp 主要仰賴先驗）' : '雙點'}；擬合最大殘差 ${fmt(bMaxResid, 1)} mg/L`,
+    ];
+    if (dialysis) bA.push('血液透析：Goti 二元共變數建模，透析後回彈須加強監測。');
+    bA.push(st === 'ok' ? '暴露達標。' : `暴露${st === 'low' ? '不足' : '偏高'}，建議調整為 ${recDose} mg q${tau}h（達 AUC ${targetAuc}）。`);
+    $('b-assess').textContent = bA.join('\n');
+
     // 模型細節
     $('b-formula').innerHTML =
       `先驗（Goti 2018，共變數代入）：\n` +
@@ -406,6 +447,7 @@
 
     show('b');
   });
+  wireCopy('b-assess-copy', () => $('b-assess').textContent);
   wireCopy('b-copy', () => $('b-plan').textContent);
 
   // ---------- 顯示 / 錯誤 ----------

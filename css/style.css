@@ -240,6 +240,11 @@ body {
   margin: 0; padding: .85rem; font-family: var(--font-mono); font-size: .82rem; line-height: 1.65;
   color: var(--color-text-body); background: #fff; white-space: pre-wrap; word-break: break-word;
 }
+/* 評估 Assessment：與 Plan 區分（slate 色調，SOAP 的 A）*/
+.plan--assess { border-color: #cbd5e1; }
+.plan--assess .plan__head { background: #eef2f7; color: #334155; }
+.plan--assess .plan__copy { border-color: #64748b; color: #334155; }
+.plan--assess .plan__copy:hover { background: #334155; color: #fff; }
 
 /* Formula */
 .formula { margin-top: 1rem; }
