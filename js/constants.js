@@ -61,11 +61,48 @@ const CG = Object.freeze({
   ADJ_FACTOR: 0.4,            // AdjBW = IBW + 0.4×(TBW − IBW)
 });
 
+/**
+ * GOTI — Goti 2018 族群 PK 模型（2-compartment），供 Phase 2 Bayesian MAP 先驗。
+ * 來源：Goti V, et al. Ther Drug Monit 2018;40:212-221（Table 2，Docling 逐格核對 2026-07-06）。
+ *   wiki: source-goti2018-vancomycin-popPK-HD / concept-Bayesian-MAP-estimation
+ * 共變數式：
+ *   TVCL = CL_POP × (CrCL/CRCL_REF)^CRCL_EXP × DIAL_CL^DIAL   (L/h)
+ *   TVVc = VC_POP × (WT/WT_REF)              × DIAL_VC^DIAL    (L)
+ *   Vp、Q 為固定典型值（最終模型無 WT 項、無 IIV）。
+ * IIV 為指數模型變異 ω² = ln(1 + CV²)。殘差為 combined（比例+加成）。
+ */
+const GOTI = Object.freeze({
+  CL_POP: 4.5,          // L/h（CrCL=120、非透析）
+  CRCL_REF: 120,        // mL/min（冪次參考點）
+  CRCL_EXP: 0.8,        // CrCL on CL 冪次
+  DIAL_CL: 0.7,         // 透析時 ×CL（清除率降至 ~70%）
+  VC_POP: 58.4,         // L（70 kg、非透析）
+  WT_REF: 70,           // kg（體積正規化參考）
+  DIAL_VC: 0.5,         // 透析時 ×Vc（中央室體積降 ~50%）
+  VP: 38.4,             // L（周邊室，固定典型值）
+  Q: 6.5,               // L/h（室間清除率）
+
+  // IIV：ω² = ln(1 + CV²)。CV：CL 39.8% / Vc 81.6% / Vp 57.1%
+  OMEGA2_CL: 0.147,
+  OMEGA2_VC: 0.510,
+  OMEGA2_VP: 0.282,
+
+  // 殘差（combined additive + proportional）：SD(C) = √((ERR_PROP·C)² + ERR_ADD²)
+  ERR_PROP: 0.227,      // 比例誤差 CV
+  ERR_ADD: 3.4,         // 加成誤差 SD (mg/L)
+
+  // CrCL 計算規則（忠於原模型）
+  CRCL_CAP: 150,        // Cockcroft-Gault CrCL 上限截斷 (mL/min)
+  ELDERLY_AGE: 60,      // 老年 SCr 下限校正年齡門檻
+  ELDERLY_SCR_FLOOR: 1, // 若 SCr<1 且年齡>門檻 → SCr 視為 1 mg/dL
+});
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { VANCO, CG };
+  module.exports = { VANCO, CG, GOTI };
 } else {
   // 瀏覽器：classic script 的 top-level const 不會掛上 window，手動附掛供 pk.js 讀取
   const g = (typeof self !== 'undefined') ? self : this;
   g.VANCO = VANCO;
   g.CG = CG;
+  g.GOTI = GOTI;
 }
