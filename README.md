@@ -1,7 +1,7 @@
 # Vancomycin AUC Calculator（萬古黴素 AUC 導向劑量計算器）
 
 繁體中文、純前端、可離線、GitHub Pages 部署的萬古黴素 AUC 導向劑量工具。
-臨床數據集中於 `js/constants.js`（對應 Obsidian wiki 證據頁），不寫死於邏輯。
+臨床數據集中於 `js/constants.js`，不寫死於邏輯。
 
 🔗 **線上使用**：https://liangrxdev.github.io/vanco-auc-calc/
 > ⚕️ 僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師/醫師覆核。
