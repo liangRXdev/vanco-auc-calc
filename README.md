@@ -60,12 +60,14 @@ vanco-auc-calc/
 │   ├── constants.js    # 臨床常數（VANCO / CG / GOTI，集中管理）
 │   ├── pk.js           # 一室藥動學純函式（Mode 1/2）
 │   ├── pk.test.js      # sanity test（17/17）
-│   ├── bayes.js        # 二室 Bayesian MAP 引擎（Mode 3；含收斂/多起點/NaN 守衛）
-│   ├── bayes.test.js   # sanity test（31/31）
-│   ├── safety.js       # 確定性安全層（eligibility / 濃度守衛 / 擬合守衛 / AUC 分級）
-│   ├── safety.test.js  # 安全行為 C-cases（31/31）
-│   └── ui.js           # DOM 綁定與渲染
-└── css/style.css       # Noto Sans TC + DM Mono、BEM
+│   ├── bayes.js            # 二室 Bayesian MAP 引擎（Mode 3；含收斂/多起點/NaN 守衛）
+│   ├── bayes.test.js       # sanity test（31/31）
+│   ├── bayes.validation.js # L1 解析解 oracle + L2 模擬-估計（可重跑）
+│   ├── bayes.golden.test.js# golden-master 回歸基準（21/21）
+│   ├── safety.js           # 確定性安全層（eligibility / 濃度守衛 / 擬合守衛 / AUC 分級）
+│   ├── safety.test.js      # 安全行為 C-cases（31/31）
+│   └── ui.js               # DOM 綁定與渲染
+└── css/style.css           # Noto Sans TC + DM Mono、BEM
 ```
 
 技術：純 HTML/CSS/JS 無框架（同 bicarb-dosing-calc）。
@@ -73,19 +75,21 @@ vanco-auc-calc/
 ## 測試
 
 ```bash
-node js/pk.test.js      # Mode 1/2（一室、Sawchuk-Zaske）           17/17
-node js/bayes.test.js   # Mode 3（二室 MAP：收斂旗標、NaN 守衛、穩態 AUC）31/31
-node js/safety.test.js  # 安全層行為（BLOCK/WARNING 觸發正確性）      31/31
+node js/pk.test.js           # Mode 1/2（一室、Sawchuk-Zaske）              17/17
+node js/bayes.test.js        # Mode 3（收斂旗標、NaN 守衛、穩態 AUC）        31/31
+node js/safety.test.js       # 安全層行為（BLOCK/WARNING 觸發正確性）        31/31
+node js/bayes.golden.test.js # golden-master 回歸基準                        21/21
+node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估計（N=1000）
 ```
 
-> ⚠️ 這些為**驗證（verification／自洽一致性）**，非**臨床驗證（validation）**。Mode 3 forward/inverse 共用同一模擬器，結構性錯誤可能兩端對消而仍 PASS。獨立解析解交叉驗證（L1）與模擬-估計 bias/precision（L2）規劃於 v0.3.1，詳見 `docs/bayes-validation.md`（建置中）。
+> ⚠️ `*.test.js` 多為 **verification（自洽一致性）**。真正的 Mode 3 **validation** 走 `bayes.validation.js`：L1 以**獨立解析解**交叉驗證 RK4（打破 round-trip 循環性），L2 以模擬-估計量測 bias/precision/shrinkage。詳見 `docs/bayes-validation.md`。
 
 ## Validation status
 
 | 範圍 | 狀態 |
 |---|---|
 | Mode 1/2 數值 | 有限數學驗證 + 對 ClinCalc 選定案例交叉核對（見 `docs/validation.md`）|
-| Mode 3 引擎 | 內部自洽（往返一致 / 自洽回復）；**獨立解析解交叉驗證（L1）與模擬-估計（L2）：pending（v0.3.1）** |
+| Mode 3 引擎 | **L1 獨立解析解 oracle：PASS**（RK4 vs 封閉解 <1e-6）；**L2 模擬-估計：完成**（N=1000，若 Goti 為真估計器無偏）。見 `docs/bayes-validation.md` |
 | 外部 Bayesian 對照 | 商用工具 / 富取樣 AUC：**未執行** |
 | 前瞻臨床驗證 | **未執行** |
 
