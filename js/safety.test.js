@@ -116,7 +116,13 @@ v = S.evaluateDataQuality({ nLevels: 1 }, 3);
 c('C25', v.confidence === 'Moderate' && has(v, 'DQ_SINGLE_LEVEL'), '單點 → Moderate 信心');
 
 v = S.evaluateDataQuality({ nLevels: 2, steadyState: false }, 3);
-c('C26', has(v, 'DQ_NON_STEADY'), '非穩態 → 標穩態投影');
+c('C26', has(v, 'DQ_NON_STEADY') && v.confidence === 'Low', '非穩態 → Low 信心（L2 shrinkage 0.77）');
+
+v = S.evaluateDataQuality({ nLevels: 2, steadyState: true }, 3);
+c('C26b', v.confidence === 'High' && has(v, 'DQ_TWO_LEVEL'), '穩態雙點 → High 信心');
+
+v = S.evaluateDataQuality({ nLevels: 1, steadyState: true }, 3);
+c('C26c', v.confidence === 'Moderate' && has(v, 'DQ_SINGLE_LEVEL'), '穩態單點 → Moderate 信心');
 
 // ─────────── merge / buildSafetyMessages ───────────
 console.log('\n--- 合併 ---');

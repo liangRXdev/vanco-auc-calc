@@ -142,25 +142,38 @@
     return verdict(m, { confidence, allowDoseRecommendation });
   }
 
-  // ---------- A / 資料品質（provisional；L2 shrinkage 背書版延至 v0.3.2）----------
+  // ---------- A / 資料品質信心分層（由 v0.3.1 L2 shrinkage 背書）----------
   /**
-   * input: { nLevels, steadyState (bool|null) }；mode: 1|2|3
-   * 注意：這是 v0.3.0 provisional 啟發式；正式 tier 需 L2 模擬-估計 shrinkage 背書（v0.3.2）。
+   * 依「取樣資訊量」給 Mode 3 信心 tier。門檻由 L2（N=1000）shrinkage(CL) 背書：
+   *   穩態峰+谷 0.21、兩隨機 0.25、穩態單谷 0.27、非穩態首劑 0.77。
+   *   shrinkage 越低＝資料對 CL 資訊量越高 → 信心越高。
+   * 對映：穩態 ≥2 點→High；穩態單點→Moderate；非穩態（尤單早期點，CL 由先驗主導）→Low。
+   * input: { nLevels, steadyState (true/false/null) }；mode: 1|2|3
    */
   function evaluateDataQuality(input, mode) {
     const i = input || {};
     const m = [];
-    let confidence = 'High';
-    if (mode === 3 && i.nLevels === 1) {
-      m.push(msg('DQ_SINGLE_LEVEL', 'info',
-        '單一濃度：CL 依實測更新，但 Vc/Vp 主要仰賴族群先驗；峰值估計不確定性較大。'));
-      confidence = lowerConf(confidence, 'Moderate');
+    let tier = 'High';
+    if (mode === 3) {
+      const nonSteady = i.steadyState === false;
+      if (nonSteady) {
+        tier = 'Low';
+        m.push(msg('DQ_NON_STEADY', 'warn',
+          '非穩態取樣：AUC₂₄ = 每日總量 / CL 為「穩態投影」非當日實際暴露；'
+          + '早期單點對 CL 資訊量低（L2 shrinkage 0.77，估計貼近先驗）→ 信心 Low。'));
+        if (i.nLevels === 1) m.push(msg('DQ_SINGLE_LEVEL', 'info',
+          '單一濃度：Vc/Vp 主要仰賴族群先驗、峰值不確定性大；建議穩態後補第 2 點。'));
+      } else if (i.nLevels === 1) {
+        tier = 'Moderate';
+        m.push(msg('DQ_SINGLE_LEVEL', 'info',
+          '穩態單一濃度：CL 依實測更新（L2 shrinkage 0.27）、Vc/Vp 仰賴先驗 → 信心 Moderate。'));
+      } else {
+        tier = 'High';
+        m.push(msg('DQ_TWO_LEVEL', 'info',
+          '穩態雙點：CL 資訊量佳（L2 shrinkage ~0.21）→ 信心 High。'));
+      }
     }
-    if (mode === 3 && i.steadyState === false) {
-      m.push(msg('DQ_NON_STEADY', 'info',
-        '非穩態取樣：AUC₂₄ = 每日總量 / CL 為「穩態投影」，非當日實際暴露。'));
-    }
-    return verdict(m, { confidence });
+    return verdict(m, { confidence: tier });
   }
 
   // ---------- B1 Mode 2 濃度守衛 ----------

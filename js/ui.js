@@ -361,7 +361,7 @@
 
   function alertBayes(msg) {
     $('b-hero').innerHTML = ''; $('b-pk').innerHTML = ''; $('b-fit').innerHTML = '';
-    $('b-rec').innerHTML = ''; $('b-formula').innerHTML = '';
+    $('b-rec').innerHTML = ''; $('b-formula').innerHTML = ''; $('b-confidence').innerHTML = '';
     renderWarnings($('b-warnings'), [{ level: 'error', msg }]);
     show('b');
   }
@@ -388,6 +388,14 @@
     const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = Math.round(num('b-ndose'));
     const sexMale = document.querySelector('input[name="b-sex"]:checked').value === 'M';
     const dialysis = $('b-dial').checked;
+    // 臨床聲明（無法自動偵測，由使用者勾選）
+    const declare = {
+      declaredAKI: $('b-aki').checked,
+      declaredUnreliableDoseTiming: $('b-dosetime').checked,
+      declaredUnreliableSampleTiming: $('b-sampletime').checked,
+      pregnant: $('b-preg').checked,
+      cysticFibrosis: $('b-cf').checked,
+    };
     const mic = isFinite(num('b-mic')) && num('b-mic') > 0 ? num('b-mic') : VANCO.MIC_DEFAULT;
     const targetAuc = num('b-target') || VANCO.AUC_TARGET_DEFAULT;
 
@@ -412,7 +420,7 @@
     const steadyState = isFinite(tHalfEff) && elapsedToLast >= 4 * tHalfEff;
 
     const sf = SAFETY.buildSafetyMessages({
-      eligibility: { age: num('b-age'), dialysis },
+      eligibility: Object.assign({ age: num('b-age'), dialysis }, declare),
       dataQuality: { input: { nLevels: levels.length, steadyState }, mode: 3 },
       bayesFit: r,
       auc: r.auc24Current,
@@ -424,6 +432,25 @@
       return;
     }
     const canRecommend = sf.allowDoseRecommendation;
+
+    // 資料信心 badge（tier 由 evaluateDataQuality/eligibility 合併，L2 shrinkage 背書）
+    (function () {
+      const tier = sf.confidence; // High / Moderate / Low
+      const cls = tier === 'High' ? 'high' : tier === 'Moderate' ? 'moderate' : 'low';
+      const reasons = [];
+      if (levels.length === 1) reasons.push('單一濃度');
+      if (!steadyState) reasons.push('非穩態');
+      if (dialysis) reasons.push('血液透析');
+      if (declare.declaredAKI) reasons.push('AKI');
+      if (declare.declaredUnreliableDoseTiming) reasons.push('給藥時間不可靠');
+      if (declare.declaredUnreliableSampleTiming) reasons.push('採血時間不可靠');
+      if (declare.pregnant) reasons.push('懷孕');
+      if (declare.cysticFibrosis) reasons.push('CF');
+      const note = reasons.length ? `影響因子：${reasons.join('、')}` : '穩態雙點，資訊量佳（L2 shrinkage ~0.21）';
+      $('b-confidence').innerHTML =
+        `<span class="confidence__badge confidence__badge--${cls}">資料信心：${tier}</span>` +
+        `<span class="confidence__note">${esc(note)}</span>`;
+    })();
 
     // Hero
     const auc = r.auc24Current;
