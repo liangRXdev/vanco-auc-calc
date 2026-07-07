@@ -108,19 +108,14 @@
     if (r.loadingCapped) extra.push({ level: 'info', msg: '✱ 負荷已封頂於 3000 mg。' });
     renderWarnings($('e-warnings'), extra.concat(r.warnings));
 
-    // Plan（可複製）
+    // Plan（可複製）：僅行動，病人/腎功能/判讀見 Assessment
     const sex = document.querySelector('input[name="e-sex"]:checked').value === 'M' ? '男' : '女';
-    const lines = [
-      '【Vancomycin 起始劑量建議】',
-      `病人：${num('e-age')}歲 ${sex}，${num('e-tbw')}kg / ${num('e-height')}cm，SCr ${num('e-scr')} mg/dL`,
-      `CrCl (Cockcroft-Gault，${r.crclWeight.label} ${fmt(r.crclWeight.weight, 1)}kg) = ${fmt(r.crcl, 0)} mL/min｜族群 CL ${fmt(r.clPop, 2)} L/h`,
-    ];
-    if (icu) lines.push(`負荷劑量：${r.loadingDose} mg IV（actual body weight）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
+    const lines = ['【Vancomycin 起始劑量 Plan】'];
+    if (icu) lines.push(`負荷：${r.loadingDose} mg IV（TBW）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
     lines.push(
-      `維持劑量：${r.maintenanceDose} mg IV q${r.maintenanceInterval}h（日劑量 ${fmt(r.maintenanceDailyMg, 0)} mg）`,
-      `目標 AUC24 ${targetAuc}（400–600, assume MIC 1）→ 預測 AUC24 ≈ ${fmt(r.predictedAuc24, 0)}、峰/谷 ${fmt(r.predictedPeak, 1)}/${fmt(r.predictedTrough, 1)}`,
-      `監測：24–48h 內採雙點濃度驗證 AUC 後調整`,
-      `—— 維持以族群 CL（Matzke）反推 AUC；負荷 mg/kg TBW。本工具僅供輔助，須專業覆核。`
+      `維持：${r.maintenanceDose} mg IV q${r.maintenanceInterval}h（${fmt(r.maintenanceDailyMg, 0)} mg/day）→ 預測 AUC24 ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）、峰/谷 ${fmt(r.predictedPeak, 1)}/${fmt(r.predictedTrough, 1)}`,
+      '監測：24–48h 內採雙點濃度驗證 AUC 後調整。',
+      '本工具僅供輔助，須專業覆核。'
     );
     $('e-plan').textContent = lines.join('\n');
 
@@ -239,47 +234,28 @@
       `AUC₂₄ = AUC_τ × (24/${input.tau}) = ${fmt(r.auc24, 1)} mg·h/L\n` +
       `交叉驗證 TDD/CL = ${fmt(r.tddCurrent, 0)}/${fmt(r.cl, 2)} = ${fmt(r.auc24Check, 1)}（應相近）`;
 
-    // Plan（可複製）
-    const statusTxt = st === 'ok' ? '達標' : st === 'low' ? '偏低（暴露不足）' : '偏高（AKI 風險）';
-    const pl = [
-      '【Vancomycin AUC 評估與調整】',
-      `目前方案：${input.dose} mg q${input.tau}h（日劑量 ${fmt(r.tddCurrent, 0)} mg），輸注 ${input.tInf}h`,
-      `血中濃度：C1 ${input.c1} @${input.t1}h、C2 ${input.c2} @${input.t2}h（MIC ${mic}）`,
-      `PK：ke ${fmt(r.ke, 4)}/h、t½ ${fmt(r.halfLife, 1)}h、Vd ${fmt(r.vd, 1)}L、CL ${fmt(r.cl, 2)} L/h`,
-      `預測峰/谷：${fmt(r.cMaxTrue, 1)} / ${fmt(r.cMinTrue, 1)} mg/L`,
-      `AUC24 = ${fmt(r.auc24, 0)} mg·h/L（AUC/MIC ${fmt(r.aucOverMic, 0)}）→ ${statusTxt}`,
-    ];
-    if (st === 'ok') {
-      pl.push('建議：AUC 已達標，維持現方案；24–48h 後複驗。');
-    } else if (st === 'high') {
-      // AUC>600：不逕給單行減量，改結構化處置（B3）
-      pl.push('⛔ AUC₂₄ > 600（腎毒性風險上升）→ 結構化處置，勿逕依外推減量：');
-      SAFETY.auc600Management().forEach((s) => pl.push(`  · ${s}`));
-      pl.push('（下表外推劑量僅供處置後參考。）');
-    } else {
-      pl.push(`建議：調整日劑量至 ~${fmt(r.tddTarget, 0)} mg（比例線性外推至 AUC 500）`);
-      r.intervalOptions.forEach((o) => {
-        const mark = o.intervalH === input.tau ? '  ★[建議：維持原間隔]' : '';
-        const flag = o.impractical ? '（單次過大）' : '';
-        pl.push(`  · ${o.doseMg} mg q${o.intervalH}h${flag}｜峰/谷 ${fmt(o.projectedPeak, 1)}/${fmt(o.projectedTrough, 1)}、AUC24 ${fmt(o.projectedAuc24, 0)}${mark}`);
-      });
-      pl.push('複測：調整後 24–48h 複驗 AUC。');
-    }
-    pl.push('—— Sawchuk-Zaske first-order；本工具僅供輔助，須專業覆核。');
-    $('a-plan').textContent = pl.join('\n');
-
     // 評估 Assessment（SOAP-A：臨床判讀）
+    const statusTxt = st === 'ok' ? '達標' : st === 'low' ? '偏低（暴露不足）' : '偏高（AKI 風險）';
     const aA = [
       '【Vancomycin 評估 Assessment】（雙點反算，Sawchuk-Zaske）',
       `目前 ${input.dose} mg q${input.tau}h（${fmt(r.tddCurrent, 0)} mg/day）→ AUC₂₄ ${fmt(r.auc24, 0)}（AUC/MIC ${fmt(r.aucOverMic, 0)}，MIC ${mic}）→ ${statusTxt}`,
       `個體 PK：CL ${fmt(r.cl, 2)} L/h、t½ ${fmt(r.halfLife, 1)} h、Vd ${fmt(r.vd, 1)} L；預測峰/谷 ${fmt(r.cMaxTrue, 1)}/${fmt(r.cMinTrue, 1)} mg/L`,
-      st === 'ok' ? '暴露達標，維持現方案，24–48h 後複驗。' : `暴露${st === 'low' ? '不足' : '偏高'}，需調整日劑量至 ~${fmt(r.tddTarget, 0)} mg（達 AUC 500）。`,
+      st === 'ok' ? '暴露達標，維持現方案，24–48h 後複驗。'
+        : st === 'high' ? '暴露偏高（AUC>600），腎毒性風險上升，優先處置高暴露（方案見 Plan）。'
+        : '暴露不足，需上調日劑量以達 AUC 500（方案見 Plan）。',
     ];
     if (mic >= VANCO.MIC_ALT_AGENT) aA.push(`MIC ≥ ${VANCO.MIC_ALT_AGENT}：傳統劑量難達標，考慮換藥。`);
     $('a-assess').textContent = aA.join('\n');
 
-    // 自訂試算：存個人化 PK，並以建議方案預填
-    simCtx = { ke: r.ke, vd: r.vd, cl: r.cl, mic, tInf: r.tInf };
+    // 自訂試算：存個人化 PK + Plan 所需狀態，並以建議方案預填
+    simCtx = {
+      mode: 2, ke: r.ke, vd: r.vd, cl: r.cl, mic, tInf: r.tInf,
+      dose: input.dose, tau: input.tau, tddCurrent: r.tddCurrent,
+      auc24: r.auc24, aucOverMic: r.aucOverMic, st, statusTxt,
+      tddTarget: r.tddTarget, intervalOptions: r.intervalOptions,
+    };
+    planACustom = null;
+    buildPlanA(); // 建立 Plan（無自訂時用外推方案）
     const recOpt = r.intervalOptions.find((o) => o.intervalH === input.tau) || r.intervalOptions[1];
     $('sim-dose').value = recOpt.doseMg;
     $('sim-tau').value = recOpt.intervalH;
@@ -289,6 +265,38 @@
   });
   wireCopy('a-assess-copy', () => $('a-assess').textContent);
   wireCopy('a-copy', () => $('a-plan').textContent);
+
+  // Mode 2 Plan（可複製）：僅行動，PK/濃度/峰谷判讀見 Assessment；含自訂選定方案
+  let planACustom = null;
+  function buildPlanA() {
+    const s = simCtx; if (!s || s.mode !== 2) return;
+    const pl = [
+      '【Vancomycin 劑量調整 Plan】',
+      `現行 ${s.dose} mg q${s.tau}h（${fmt(s.tddCurrent, 0)} mg/day）→ AUC24 ${fmt(s.auc24, 0)}（${s.statusTxt}）`,
+    ];
+    if (s.st === 'ok') {
+      pl.push('建議：維持現方案，24–48h 後複驗。');
+    } else if (s.st === 'high') {
+      pl.push('⛔ AUC>600（腎毒性風險）→ 結構化處置，勿逕減量：');
+      SAFETY.auc600Management().forEach((x) => pl.push(`  · ${x}`));
+      pl.push('（下列外推劑量僅供處置後參考。）');
+    } else {
+      pl.push(`建議日劑量 ~${fmt(s.tddTarget, 0)} mg（達 AUC 500）：`);
+    }
+    if (s.st !== 'ok') {
+      s.intervalOptions.forEach((o) => {
+        const mark = o.intervalH === s.tau ? ' ★維持原間隔' : '';
+        const flag = o.impractical ? '（單次過大）' : '';
+        pl.push(`  · ${o.doseMg} mg q${o.intervalH}h${flag}｜峰/谷 ${fmt(o.projectedPeak, 1)}/${fmt(o.projectedTrough, 1)}、AUC24 ${fmt(o.projectedAuc24, 0)}${mark}`);
+      });
+    }
+    if (planACustom) {
+      const c = planACustom;
+      pl.push(`★ 自訂選定：${c.dose} mg q${c.tau}h（${fmt(c.dailyMg, 0)} mg/day）→ 峰/谷 ${fmt(c.peak, 1)}/${fmt(c.trough, 1)}、AUC24 ${fmt(c.auc24, 0)}（${c.tag}）`);
+    }
+    pl.push('複驗：調整後 24–48h。Sawchuk-Zaske first-order；須專業覆核。');
+    $('a-plan').textContent = pl.join('\n');
+  }
 
   // 自訂方案試算
   function renderSim() {
@@ -311,6 +319,9 @@
       '</div>' +
       `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
       (s.impractical ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
+    // 帶入 Plan：自訂選定方案
+    planACustom = { dose, tau, dailyMg: s.dailyMg, peak: s.peak, trough: s.trough, auc24: s.auc24, tag };
+    buildPlanA();
   }
   $('sim-calc').addEventListener('click', renderSim);
   ['sim-dose', 'sim-tau'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') renderSim(); }));
@@ -477,42 +488,40 @@
     w.push({ level: 'info', msg: '先驗模型：Goti 2018（住院成人）。重症病人先驗精度較低（Narayan 2021）；本估計須臨床覆核。' });
     renderWarnings($('b-warnings'), w);
 
-    // Plan
-    const sex = sexMale ? '男' : '女';
-    const lv = levels.map((l, i) => `C${i + 1} ${l.conc} mg/L @最近一劑後 ${l.tRel}h`).join('、');
+    // Plan（可複製）：僅行動，病人/濃度/PK/判讀見 Assessment
     const pl = [
-      '【Vancomycin Bayesian AUC 評估（Goti 2018 先驗）】',
-      `病人：${num('b-age')}歲 ${sex}，${num('b-tbw')}kg / ${num('b-height')}cm，SCr ${num('b-scr')}${dialysis ? '，血液透析' : ''}`,
-      `現行：${dose} mg q${tau}h（第 ${N} 劑，日劑量 ${fmt(dose * (24 / tau), 0)} mg）`,
-      `濃度：${lv}（MIC ${mic}）`,
-      `個體 PK：CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}）、Vc ${fmt(r.vc, 1)}L、Vp ${fmt(r.vp, 1)}L、CrCl ${fmt(r.crcl, 0)}`,
-      `${steadyState ? '目前' : '穩態投影'} AUC₂₄ = ${fmt(auc, 0)} mg·h/L（AUC/MIC ${fmt(auc / mic, 0)}）→ ${tag}${steadyState ? '' : '（非當日實際暴露）'}`,
+      '【Vancomycin Bayesian 劑量 Plan】',
+      `現行 ${dose} mg q${tau}h（第 ${N} 劑）→ ${steadyState ? '' : '穩態投影 '}AUC24 ${fmt(auc, 0)}（${tag}）`,
     ];
     if (canRecommend) {
       pl.push(`建議：${recDose} mg q${tau}h（${fmt(recDose * (24 / tau), 0)} mg/day）→ 預測 AUC ${fmt(recExp.auc24, 0)}、穩態峰/谷 ${fmt(recExp.peak, 1)}/${fmt(recExp.trough, 1)}`);
     } else if (st === 'high') {
-      pl.push('⛔ AUC₂₄ > 600：不逕給劑量建議，結構化處置：');
+      pl.push('⛔ AUC>600：不逕給劑量建議，結構化處置：');
       SAFETY.auc600Management().forEach((s) => pl.push(`  · ${s}`));
     } else if (dialysis) {
-      pl.push('血液透析：experimental / research-use，不輸出具體劑量建議（Goti 未建模透析清除）；劑量由臨床人員判斷。');
+      pl.push('血液透析：experimental，不輸出具體劑量建議（Goti 未建模透析清除）；劑量由臨床人員判斷。');
     } else {
       pl.push('暫不輸出劑量建議（詳見警示）。');
     }
-    pl.push('監測：調整後 24–48h 複驗；Goti 先驗（住院成人），須專業覆核。');
+    pl.push('監測：調整後 24–48h 複驗。須專業覆核。');
     $('b-plan').textContent = pl.join('\n');
 
     // 評估 Assessment（SOAP-A：臨床判讀）
+    const sex = sexMale ? '男' : '女';
+    const lv = levels.map((l, i) => `C${i + 1} ${l.conc} mg/L @最近一劑後 ${l.tRel}h`).join('、');
     const clStatus = r.eta.cl > 0.05 ? '清除較族群先驗快' : r.eta.cl < -0.05 ? '清除較族群先驗慢' : '清除接近族群先驗';
     const bMaxResid = r.maxAbsResid;
     const bA = [
       '【Vancomycin 評估 Assessment】（Bayesian，Goti 2018 先驗）',
+      `病人：${num('b-age')}歲 ${sex}，${num('b-tbw')}kg / ${num('b-height')}cm，SCr ${num('b-scr')}${dialysis ? '，血液透析' : ''}`,
       `目前 ${dose} mg q${tau}h（${fmt(dose * (24 / tau), 0)} mg/day，第 ${N} 劑）→ ${steadyState ? '' : '穩態投影 '}AUC₂₄ ${fmt(auc, 0)}（AUC/MIC ${fmt(auc / mic, 0)}，MIC ${mic}）→ ${tag}`,
-      `個體 CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}；CrCl ${fmt(r.crcl, 0)} mL/min`,
+      `濃度：${lv}`,
+      `個體 CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}；Vc ${fmt(r.vc, 1)}L、Vp ${fmt(r.vp, 1)}L、CrCl ${fmt(r.crcl, 0)} mL/min`,
       `資料信心：${sf.confidence}｜${levels.length === 1 ? '單一濃度（Vc/Vp 主要仰賴先驗）' : '雙點'}${steadyState ? '' : '、非穩態（穩態投影）'}；擬合最大殘差 ${fmt(bMaxResid, 1)} mg/L`,
     ];
     if (dialysis) bA.push('血液透析：Goti 二元共變數建模，透析後回彈須加強監測；不輸出具體劑量建議。');
-    if (canRecommend) bA.push(st === 'ok' ? '暴露達標。' : `暴露${st === 'low' ? '不足' : '偏高'}，建議調整為 ${recDose} mg q${tau}h（達 AUC ${targetAuc}）。`);
-    else if (st === 'high') bA.push('暴露偏高（>600）：優先處置高暴露，暫不輸出劑量建議。');
+    if (canRecommend) bA.push(st === 'ok' ? '暴露達標。' : `暴露${st === 'low' ? '不足，需上調' : '偏高，需下調'}劑量以達 AUC ${targetAuc}（方案見 Plan）。`);
+    else if (st === 'high') bA.push('暴露偏高（>600）：優先處置高暴露，暫不輸出劑量建議（見 Plan）。');
     else bA.push('暫不輸出劑量建議（詳見警示）。');
     $('b-assess').textContent = bA.join('\n');
 
