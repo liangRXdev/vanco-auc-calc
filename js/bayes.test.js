@@ -123,5 +123,23 @@ near('穩態 AUC24 = 3000/4.7', sse.auc24, 3000 / 4.7, 1e-6);
 ok('峰 > 谷', sse.peak > sse.trough);
 console.log(`  1500 q12h → 峰 ${sse.peak.toFixed(1)} / 谷 ${sse.trough.toFixed(1)} mg/L、AUC24 ${sse.auc24.toFixed(0)}`);
 
+// ---------- 收斂/一致性/有限性守衛（v0.3.0）----------
+console.log('\n--- optimizer 守衛旗標 ---');
+ok('雙點案 converged=true', map.converged === true);
+ok('雙點案 fitReliable=true', map.fitReliable === true);
+ok('雙點案 nonFinite=false', map.nonFinite === false);
+ok('雙點案 maxAbsResid < 3', map.maxAbsResid < 3);
+ok('無觀測案 converged=true（純先驗）', noObs.converged === true);
+ok('無觀測案 nonFinite=false', noObs.nonFinite === false);
+
+// nelderMead 直接回傳收斂旗標
+const nmEasy = BAYES.nelderMead((x) => x[0] * x[0] + x[1] * x[1] + x[2] * x[2], [1, 1, 1], {});
+ok('nelderMead 二次式 converged=true', nmEasy.converged === true);
+ok('nelderMead 回傳 iters', typeof nmEasy.iters === 'number');
+
+// simulateConc NaN 守衛：無法捕捉的觀測時刻（如早於第一劑）→ NaN（非 undefined）
+const oob = BAYES.simulateConc([{ time: 0, dose: 1000, tInf: 1 }], [-5], { cl: 4.5, vc: 58.4, vp: 38.4, q: 6.5 });
+ok('simulateConc 未捕捉時刻回 NaN（非 undefined）', Number.isNaN(oob[0]));
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

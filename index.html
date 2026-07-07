@@ -28,7 +28,7 @@
           <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
         </div>
       </div>
-      <span class="header__version">v0.2.1</span>
+      <span class="header__version">v0.3.0</span>
     </div>
   </header>
 
@@ -224,7 +224,7 @@
           </div>
           <div class="field field--full">
             <label class="segmented__opt segmented__opt--check">
-              <input type="checkbox" id="b-dial"><span>間歇性血液透析（Goti 透析共變數：CL×0.7、Vc×0.5）</span>
+              <input type="checkbox" id="b-dial"><span>間歇性血液透析（experimental；僅估 AUC，不出劑量建議）</span>
             </label>
           </div>
         </div>
@@ -293,7 +293,7 @@
     </section>
 
     <footer class="disclaimer">
-      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。Mode 1/2 假設一室模型；Mode 3（Bayesian）用 Goti 2018 二室族群 PK 先驗（住院成人；重症/兒童外推性有限）。MIC 預設 1 mg/L。CRRT / 持續輸注未涵蓋。</p>
+      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。Mode 1/2 假設一室模型；Mode 3（Bayesian）用 Goti 2018 二室族群 PK 先驗（住院成人；重症/兒童外推性有限）。MIC 預設 1 mg/L。<b>血液透析為 experimental（僅估 AUC、不出劑量建議）；CRRT / SLED / ECMO / 持續輸注 / 兒童未涵蓋。</b>Mode 3 為內部自洽驗證，尚未完成獨立臨床驗證。</p>
       <p class="disclaimer__src">證據：Rybak 2020 ASHP/IDSA/PIDS/SIDP 共識 · Crass 2018（肥胖）· Goti 2018（Bayesian 先驗）· 計算法：Sawchuk-Zaske first-order／MAP（Sheiner-Beal）</p>
     </footer>
 
@@ -302,6 +302,7 @@
   <script src="js/constants.js"></script>
   <script src="js/pk.js"></script>
   <script src="js/bayes.js"></script>
+  <script src="js/safety.js"></script>
   <script src="js/ui.js"></script>
 </body>
 </html>

@@ -78,6 +78,7 @@
     const breakpoints = [...bpSet].filter((t) => t <= tEnd + 1e-9).sort((a, b) => a - b);
 
     const obsSorted = [...new Set(obsTimes)].sort((a, b) => a - b);
+    const obsSet = new Set(obsSorted); // 觀測時刻查表（obs 時刻已加入 breakpoints，浮點值一致）
     const result = new Map();
 
     let a1 = 0, a2 = 0, t = 0;
@@ -108,11 +109,11 @@
         t += dt;
       }
       t = segEnd; // 消弭累積浮點漂移
-      if (result.size <= obsSorted.length && obsSorted.includes(segEnd)) {
-        result.set(segEnd, a1 / pk.vc);
-      }
+      if (obsSet.has(segEnd)) result.set(segEnd, a1 / pk.vc);
     }
-    return obsTimes.map((ot) => result.get(ot));
+    // 守衛：任何未被捕捉的觀測時刻回傳 NaN（而非 undefined），
+    // 讓上游 objective/bayesianMAP 能偵測非有限值並轉為 BLOCK，不致靜默吐垃圾。
+    return obsTimes.map((ot) => (result.has(ot) ? result.get(ot) : NaN));
   }
 
   // ---------- MAP 目標函數 ----------
@@ -166,9 +167,11 @@
     };
     const A = 1, G = 2, R = 0.5, S = 0.5; // 反射/擴張/收縮/縮小係數
 
+    let converged = false;
+    let usedIter = o.maxIter;
     for (let iter = 0; iter < o.maxIter; iter++) {
       order();
-      if (Math.abs(f[n] - f[0]) < o.tol) break;
+      if (Math.abs(f[n] - f[0]) < o.tol) { converged = true; usedIter = iter; break; }
       // 形心（除最差點）
       const cen = new Array(n).fill(0);
       for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) cen[j] += simplex[i][j] / n;
@@ -194,7 +197,7 @@
       }
     }
     order();
-    return { x: simplex[0], fval: f[0] };
+    return { x: simplex[0], fval: f[0], converged, iters: usedIter };
   }
 
   // ---------- 頂層：Bayesian MAP 估計 ----------
@@ -216,9 +219,28 @@
     const obs = input.obs || [];
     let eta = [0, 0, 0];
     let fval = objective(eta, tv, input.doses, obs);
+    let converged = true;      // 無觀測時＝純先驗，視為收斂
+    let fitReliable = true;    // 多起點是否一致（optimizer 未靜默失敗）
     if (obs.length > 0) {
-      const res = nelderMead((e) => objective(e, tv, input.doses, obs), [0, 0, 0], { step: 0.3 });
-      eta = res.x; fval = res.fval;
+      const fn = (e) => objective(e, tv, input.doses, obs);
+      // 多起點：單起點 Nelder-Mead 易靜默收斂到 local min / 平坦區。
+      // 從先驗中心與四個偏移點各跑一次，取最佳 fval，並檢查各解 CL 是否一致。
+      const starts = [[0, 0, 0], [0.5, -0.4, 0.2], [-0.5, 0.4, -0.2], [0.3, 0.3, 0.3], [-0.3, -0.3, -0.3]];
+      const runs = starts
+        .map((s) => nelderMead(fn, s, { step: 0.3 }))
+        .filter((r) => isFinite(r.fval));
+      if (runs.length === 0) {
+        converged = false; fitReliable = false; // 全部非有限（NaN 濃度等）
+      } else {
+        runs.sort((a, b) => a.fval - b.fval);
+        eta = runs[0].x; fval = runs[0].fval;
+        converged = runs[0].converged;
+        // 一致性：取 fval 接近最佳者（Δfval<1），比較其個體 CL 相對散布
+        const best = runs[0].fval;
+        const cls = runs.filter((r) => r.fval - best < 1).map((r) => tv.cl * Math.exp(r.x[0]));
+        const spread = (Math.max(...cls) - Math.min(...cls)) / Math.min(...cls);
+        fitReliable = converged && spread < 0.05; // CL 各起點差 <5% 視為可靠
+      }
     }
 
     const cl = tv.cl * Math.exp(eta[0]);
@@ -234,6 +256,12 @@
     const times = obs.map((o) => o.time);
     const predAtObs = simulateConc(input.doses, times, { cl, vc, vp, q });
 
+    // 殘差與有限性守衛：任一預測非有限（NaN/Inf）即標記，供 safety 轉 BLOCK。
+    const resids = obs.map((o, i) => predAtObs[i] - o.conc);
+    const nonFinite = !isFinite(cl) || !isFinite(auc24Value(input.currentDailyDose, cl))
+      || predAtObs.some((c) => !isFinite(c));
+    const maxAbsResid = resids.length ? Math.max(...resids.map((d) => Math.abs(d))) : 0;
+
     return {
       crcl,
       prior: tv,
@@ -241,10 +269,19 @@
       cl, vc, vp, q,
       vss: vc + vp,                         // 穩態分布體積 (L)
       objective: fval,
+      converged,        // optimizer 是否收斂（未耗盡 maxIter）
+      fitReliable,      // 多起點 CL 是否一致（未靜默失敗）
+      nonFinite,        // 有無非有限輸出（NaN/Inf）
+      maxAbsResid,      // 擬合最大絕對殘差 (mg/L)
       auc24, recommendTDD,
       auc24Current: input.currentDailyDose != null ? input.currentDailyDose / cl : null,
       predictedAtObs: obs.map((o, i) => ({ time: o.time, observed: o.conc, predicted: predAtObs[i] })),
     };
+  }
+
+  /** currentDailyDose 可能為 null；null 時回傳有限值（0）以免 nonFinite 誤判。 */
+  function auc24Value(dailyDose, cl) {
+    return dailyDose != null ? dailyDose / cl : 0;
   }
 
   /**

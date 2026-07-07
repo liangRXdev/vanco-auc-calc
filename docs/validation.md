@@ -1,5 +1,9 @@
 # 臨床交叉驗證案例表（vs ClinCalc）
 
+> **範圍**：本檔僅涵蓋 **Mode 1/2**（一室、Sawchuk-Zaske）數值交叉核對。
+> **Mode 3（Bayesian）驗證**另立 `docs/bayes-validation.md`（L1 獨立解析解 → L2 模擬-估計 → L4 外部臨床錨點；規劃於 v0.3.1，建置中）。
+> 現行 Mode 3 僅有內部自洽（往返一致 / 自洽回復）＝ verification，**非 clinical validation**。
+
 部署公開前，用下列案例把本工具輸出對照 [clincalc.com/vancomycin](https://clincalc.com/vancomycin/)（或院內既有工具）核對。
 「本工具」欄已預先算好；「ClinCalc」與「一致？」欄請比對後手動填。
 

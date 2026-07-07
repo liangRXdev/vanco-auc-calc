@@ -40,6 +40,18 @@
       return `<div class="alert alert--${w.level}"><span>${icon}</span><span>${esc(w.msg)}</span></div>`;
     }).join('');
   }
+  // safety verdict 的 messages → renderWarnings 慣用格式
+  const SEV2LEVEL = { block: 'error', warn: 'warn', info: 'info' };
+  function safetyWarnings(verdict) {
+    return (verdict.messages || []).map((m) => ({ level: SEV2LEVEL[m.severity] || 'info', msg: m.text }));
+  }
+  // AUC>600 結構化處置卡片（取代單行減量建議）
+  function managementCardHTML(title) {
+    const items = SAFETY.auc600Management().map((s) => `<li>${esc(s)}</li>`).join('');
+    return `<div class="alert alert--error" style="display:block">
+      <b>⛔ ${esc(title)}</b>
+      <ol style="margin:.5rem 0 0 1.25rem;padding:0;line-height:1.7">${items}</ol></div>`;
+  }
   // 複製按鈕：寫入 clipboard，失敗則退回 execCommand
   function wireCopy(btnId, getText) {
     $(btnId).addEventListener('click', async () => {
@@ -192,10 +204,31 @@
     $('a-table').innerHTML =
       `<thead><tr><th>間隔</th><th>每次 (mg)</th><th>每日 (mg)</th><th>峰 (mg/L)</th><th>谷 (mg/L)</th><th>預估 AUC₂₄</th></tr></thead><tbody>${rows}</tbody>`;
 
-    // 警示
-    renderWarnings($('a-warnings'), r.warnings.concat([
-      { level: 'info', msg: `目前方案每日 ${fmt(r.tddCurrent, 0)} mg → 達 AUC 500 需約 ${fmt(r.tddTarget, 0)} mg/day（比例線性外推）。` },
-    ]));
+    // Safety 層（分布相取樣分級 + AUC>600 處置）
+    const sf = SAFETY.buildSafetyMessages({
+      concentrations: {
+        levels: { c1: input.c1, t1: input.t1, c2: input.c2, t2: input.t2 },
+        dosing: { tau: input.tau, tInf: input.tInf },
+        pk: { ke: r.ke, halfLife: r.halfLife, auc24: r.auc24 },
+      },
+    });
+    const aucHigh = r.auc24 > VANCO.AUC_AKI_THRESHOLD;
+
+    // 警示：safety 分布相訊息 + 既有域警示；AUC>600 改結構化處置、不出單行外推劑量
+    const distMsgs = safetyWarnings(sf).filter((w) => w.level !== 'info' || true);
+    let warnHtml = distMsgs;
+    if (!aucHigh) {
+      warnHtml = warnHtml.concat(r.warnings, [
+        { level: 'info', msg: `目前方案每日 ${fmt(r.tddCurrent, 0)} mg → 達 AUC 500 需約 ${fmt(r.tddTarget, 0)} mg/day（比例線性外推）。` },
+      ]);
+    } else {
+      warnHtml = warnHtml.concat(r.warnings);
+    }
+    renderWarnings($('a-warnings'), warnHtml);
+    if (aucHigh) {
+      $('a-warnings').insertAdjacentHTML('beforeend',
+        managementCardHTML('AUC₂₄ > 600：先處置高暴露，勿逕依下表減量'));
+    }
 
     // 計算式明細
     $('a-formula').innerHTML =
@@ -218,6 +251,11 @@
     ];
     if (st === 'ok') {
       pl.push('建議：AUC 已達標，維持現方案；24–48h 後複驗。');
+    } else if (st === 'high') {
+      // AUC>600：不逕給單行減量，改結構化處置（B3）
+      pl.push('⛔ AUC₂₄ > 600（腎毒性風險上升）→ 結構化處置，勿逕依外推減量：');
+      SAFETY.auc600Management().forEach((s) => pl.push(`  · ${s}`));
+      pl.push('（下表外推劑量僅供處置後參考。）');
     } else {
       pl.push(`建議：調整日劑量至 ~${fmt(r.tddTarget, 0)} mg（比例線性外推至 AUC 500）`);
       r.intervalOptions.forEach((o) => {
@@ -356,13 +394,36 @@
       tbw: num('b-tbw'), doses, obs, currentDailyDose: dose * (24 / tau),
     });
 
+    // ---- Safety 層：BLOCK 守衛 + 穩態判定 + 劑量建議閘門 ----
+    // 有效半衰期（0.693×Vss/CL，偏保守）；達 4 個半衰期視為近穩態
+    const tHalfEff = 0.693 * r.vss / r.cl;
+    const elapsedToLast = lastStart + Math.max.apply(null, levels.map((l) => l.tRel));
+    const steadyState = isFinite(tHalfEff) && elapsedToLast >= 4 * tHalfEff;
+
+    const sf = SAFETY.buildSafetyMessages({
+      eligibility: { age: num('b-age'), dialysis },
+      dataQuality: { input: { nLevels: levels.length, steadyState }, mode: 3 },
+      bayesFit: r,
+      auc: r.auc24Current,
+    });
+
+    // optimizer 未收斂 / 多起點不一致 / 非有限輸出 → 不吐貌似合理的數字
+    if (!sf.allowCalculation) {
+      alertBayes(sf.messages.filter((m) => m.severity === 'block').map((m) => m.text).join('　'));
+      return;
+    }
+    const canRecommend = sf.allowDoseRecommendation;
+
     // Hero
     const auc = r.auc24Current;
     const st = auc > VANCO.AUC_AKI_THRESHOLD ? 'high' : auc < VANCO.AUC_TARGET_MIN ? 'low' : 'ok';
     const tag = st === 'ok' ? '達標' : st === 'low' ? '偏低' : '偏高';
+    const aucLabel = steadyState
+      ? 'AUC₂₄ (mg·h/L)　目標 400–600'
+      : 'AUC₂₄ 穩態投影　非當日實際暴露';
     $('b-hero').className = `auc-hero auc-hero--${st}`;
     $('b-hero').innerHTML =
-      `<div><div class="auc-hero__num">${fmt(auc, 0)}</div><div class="auc-hero__label">AUC₂₄ (mg·h/L)　目標 400–600</div></div>
+      `<div><div class="auc-hero__num">${fmt(auc, 0)}</div><div class="auc-hero__label">${aucLabel}</div></div>
        <div><div class="auc-hero__num">${fmt(auc / mic, 0)}</div><div class="auc-hero__label">AUC/MIC（MIC ${mic}）</div></div>
        <span class="auc-hero__tag">${tag}</span>`;
 
@@ -392,18 +453,26 @@
     const recExp = BAYES.steadyStateExposure(recDose, tau, tInf, { cl: r.cl, vc: r.vc, vp: r.vp, q: r.q });
     $('b-rec-tau').textContent = tau;
     const impractical = recDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX;
-    $('b-rec').innerHTML =
-      metric('建議劑量', `${recDose}${impractical ? '⚠' : ''} q${tau}h`, `＝${fmt(recDose * (24 / tau), 0)}/day`, true) +
-      metric(`達目標 AUC ${targetAuc}`, fmt(recExp.auc24, 0), 'mg·h/L', true) +
-      metric('穩態預測峰 / 谷', `${fmt(recExp.peak, 1)} / ${fmt(recExp.trough, 1)}`, 'mg/L');
+    if (canRecommend) {
+      $('b-rec').innerHTML =
+        metric('建議劑量', `${recDose}${impractical ? '⚠' : ''} q${tau}h`, `＝${fmt(recDose * (24 / tau), 0)}/day`, true) +
+        metric(`達目標 AUC ${targetAuc}`, fmt(recExp.auc24, 0), 'mg·h/L', true) +
+        metric('穩態預測峰 / 谷', `${fmt(recExp.peak, 1)} / ${fmt(recExp.trough, 1)}`, 'mg/L');
+    } else if (st === 'high') {
+      $('b-rec').innerHTML = managementCardHTML('AUC₂₄ > 600：先處置高暴露，暫不輸出劑量建議');
+    } else if (dialysis) {
+      $('b-rec').innerHTML =
+        `<div class="alert alert--warn" style="display:block"><b>⚠️ 血液透析：experimental / research-use</b><br>`
+        + `Goti 僅以 CL×0.7、Vc×0.5 近似，未建模透析清除、intradialytic dosing 與 post-HD 回彈。`
+        + `本模式僅供 AUC 估計參考，<b>不輸出具體劑量建議</b>，須臨床人員自行判斷。</div>`;
+    } else {
+      $('b-rec').innerHTML =
+        `<div class="alert alert--warn" style="display:block">此案暫不輸出劑量建議（詳見下方警示）。</div>`;
+    }
 
-    // 警示
-    const w = [];
-    if (st === 'high') w.push({ level: 'warn', msg: `AUC₂₄ ${fmt(auc, 0)} > ${VANCO.AUC_AKI_THRESHOLD}：AKI 風險上升，建議依上表減量。` });
-    if (st === 'low') w.push({ level: 'warn', msg: `AUC₂₄ ${fmt(auc, 0)} < ${VANCO.AUC_TARGET_MIN}：暴露不足，建議依上表加量。` });
-    if (levels.length === 1) w.push({ level: 'info', msg: '單一濃度：CL 已依實測更新，但 Vc/Vp 主要來自族群先驗；若需更可靠峰值估計，建議補第 2 點（峰）。' });
+    // 警示：safety（eligibility / dataQuality / bayesFit / auc）+ 領域補充
+    const w = safetyWarnings(sf);
     if (levels.some((l) => l.tRel < tInf)) w.push({ level: 'info', msg: '有採血點落在輸注期內（分布相）：二室 Bayesian 可處理，此為相對雙點法的優勢。' });
-    if (dialysis) w.push({ level: 'info', msg: '血液透析：Goti 以間歇性高通量 HD 二元共變數建模，無法反映實際透析時段/CRRT；透析後回彈請加強監測。' });
     if (mic >= VANCO.MIC_ALT_AGENT) w.push({ level: 'warn', msg: `MIC ≥ ${VANCO.MIC_ALT_AGENT} mg/L：傳統劑量難達 AUC/MIC ≥400，考慮換藥。` });
     w.push({ level: 'info', msg: '先驗模型：Goti 2018（住院成人）。重症病人先驗精度較低（Narayan 2021）；本估計須臨床覆核。' });
     renderWarnings($('b-warnings'), w);
@@ -417,23 +486,34 @@
       `現行：${dose} mg q${tau}h（第 ${N} 劑，日劑量 ${fmt(dose * (24 / tau), 0)} mg）`,
       `濃度：${lv}（MIC ${mic}）`,
       `個體 PK：CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}）、Vc ${fmt(r.vc, 1)}L、Vp ${fmt(r.vp, 1)}L、CrCl ${fmt(r.crcl, 0)}`,
-      `目前 AUC₂₄ = ${fmt(auc, 0)} mg·h/L（AUC/MIC ${fmt(auc / mic, 0)}）→ ${tag}`,
-      `建議：${recDose} mg q${tau}h（${fmt(recDose * (24 / tau), 0)} mg/day）→ 預測 AUC ${fmt(recExp.auc24, 0)}、穩態峰/谷 ${fmt(recExp.peak, 1)}/${fmt(recExp.trough, 1)}`,
-      '監測：調整後 24–48h 複驗；Goti 先驗（住院成人），須專業覆核。',
+      `${steadyState ? '目前' : '穩態投影'} AUC₂₄ = ${fmt(auc, 0)} mg·h/L（AUC/MIC ${fmt(auc / mic, 0)}）→ ${tag}${steadyState ? '' : '（非當日實際暴露）'}`,
     ];
+    if (canRecommend) {
+      pl.push(`建議：${recDose} mg q${tau}h（${fmt(recDose * (24 / tau), 0)} mg/day）→ 預測 AUC ${fmt(recExp.auc24, 0)}、穩態峰/谷 ${fmt(recExp.peak, 1)}/${fmt(recExp.trough, 1)}`);
+    } else if (st === 'high') {
+      pl.push('⛔ AUC₂₄ > 600：不逕給劑量建議，結構化處置：');
+      SAFETY.auc600Management().forEach((s) => pl.push(`  · ${s}`));
+    } else if (dialysis) {
+      pl.push('血液透析：experimental / research-use，不輸出具體劑量建議（Goti 未建模透析清除）；劑量由臨床人員判斷。');
+    } else {
+      pl.push('暫不輸出劑量建議（詳見警示）。');
+    }
+    pl.push('監測：調整後 24–48h 複驗；Goti 先驗（住院成人），須專業覆核。');
     $('b-plan').textContent = pl.join('\n');
 
     // 評估 Assessment（SOAP-A：臨床判讀）
     const clStatus = r.eta.cl > 0.05 ? '清除較族群先驗快' : r.eta.cl < -0.05 ? '清除較族群先驗慢' : '清除接近族群先驗';
-    const bMaxResid = Math.max(...r.predictedAtObs.map((p) => Math.abs(p.predicted - p.observed)));
+    const bMaxResid = r.maxAbsResid;
     const bA = [
       '【Vancomycin 評估 Assessment】（Bayesian，Goti 2018 先驗）',
-      `目前 ${dose} mg q${tau}h（${fmt(dose * (24 / tau), 0)} mg/day，第 ${N} 劑）→ AUC₂₄ ${fmt(auc, 0)}（AUC/MIC ${fmt(auc / mic, 0)}，MIC ${mic}）→ ${tag}`,
+      `目前 ${dose} mg q${tau}h（${fmt(dose * (24 / tau), 0)} mg/day，第 ${N} 劑）→ ${steadyState ? '' : '穩態投影 '}AUC₂₄ ${fmt(auc, 0)}（AUC/MIC ${fmt(auc / mic, 0)}，MIC ${mic}）→ ${tag}`,
       `個體 CL ${fmt(r.cl, 2)} L/h（先驗 ${fmt(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}；CrCl ${fmt(r.crcl, 0)} mL/min`,
-      `資料信心：${levels.length === 1 ? '單一濃度（Vc/Vp 主要仰賴先驗）' : '雙點'}；擬合最大殘差 ${fmt(bMaxResid, 1)} mg/L`,
+      `資料信心：${sf.confidence}｜${levels.length === 1 ? '單一濃度（Vc/Vp 主要仰賴先驗）' : '雙點'}${steadyState ? '' : '、非穩態（穩態投影）'}；擬合最大殘差 ${fmt(bMaxResid, 1)} mg/L`,
     ];
-    if (dialysis) bA.push('血液透析：Goti 二元共變數建模，透析後回彈須加強監測。');
-    bA.push(st === 'ok' ? '暴露達標。' : `暴露${st === 'low' ? '不足' : '偏高'}，建議調整為 ${recDose} mg q${tau}h（達 AUC ${targetAuc}）。`);
+    if (dialysis) bA.push('血液透析：Goti 二元共變數建模，透析後回彈須加強監測；不輸出具體劑量建議。');
+    if (canRecommend) bA.push(st === 'ok' ? '暴露達標。' : `暴露${st === 'low' ? '不足' : '偏高'}，建議調整為 ${recDose} mg q${tau}h（達 AUC ${targetAuc}）。`);
+    else if (st === 'high') bA.push('暴露偏高（>600）：優先處置高暴露，暫不輸出劑量建議。');
+    else bA.push('暫不輸出劑量建議（詳見警示）。');
     $('b-assess').textContent = bA.join('\n');
 
     // 模型細節
