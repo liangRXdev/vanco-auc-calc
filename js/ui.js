@@ -83,6 +83,7 @@
     }
 
     const targetAuc = num('e-target') || VANCO.AUC_TARGET_DEFAULT;
+    const clModel = document.querySelector('input[name="e-clmodel"]:checked').value;
     const r = PK.empiricDosing({
       age: num('e-age'),
       heightCm: num('e-height'),
@@ -91,27 +92,34 @@
       sexMale: document.querySelector('input[name="e-sex"]:checked').value === 'M',
       criticallyIll: $('e-icu').checked,
       targetAuc,
+      clModel,
     });
 
     const icu = $('e-icu').checked;
+    const crass = r.clModel === 'crass';
+    const clLabel = crass ? '族群 CLV (Crass 肥胖)' : '族群 CLvanco (Matzke)';
+    const loadLabel = crass ? '負荷劑量 (nomogram)' : '負荷劑量 (TBW)';
     $('e-output').innerHTML =
       metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0), 'mL/min', true) +
-      metric('族群 CLvanco (Matzke)', fmt(r.clPop, 2), 'L/h') +
+      metric('BMI', fmt(r.bmi, 1), 'kg/m²') +
+      metric(clLabel, fmt(r.clPop, 2), 'L/h') +
       metric('IBW / CrCl 用體重', `${fmt(r.ibw, 1)} / ${fmt(r.crclWeight.weight, 1)}`, 'kg') +
-      (icu ? metric('負荷劑量 (TBW)', r.loadingDose + (r.loadingCapped ? '✱' : ''), 'mg', true) : '') +
+      (icu ? metric(loadLabel, r.loadingDose + (r.loadingCapped ? '✱' : ''), 'mg', true) : '') +
       metric('理想日劑量 (目標)', fmt(r.tddTarget, 0), 'mg/day') +
       metric('建議維持 (圓整)', `${r.maintenanceDose} q${r.maintenanceInterval}h`, `＝${fmt(r.maintenanceDailyMg, 0)}/day`, true) +
       metric(`預測 AUC₂₄（目標 ${targetAuc}）`, fmt(r.predictedAuc24, 0), 'mg·h/L', true) +
-      metric('預測峰 / 谷', `${fmt(r.predictedPeak, 1)} / ${fmt(r.predictedTrough, 1)}`, 'mg/L');
+      metric('預測峰 / 谷', `${fmt(r.predictedPeak, 1)} / ${fmt(r.predictedTrough, 1)}`, 'mg/L') +
+      (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : '');
     const extra = [];
-    extra.push({ level: 'info', msg: `CrCl 體重採「${r.crclWeight.label}」；負荷 mg/kg 用 TBW，維持以族群 CL 反推目標 AUC。` });
+    if (crass) extra.push({ level: 'info', msg: `肥胖 CL 模型（Crass 2018）：維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）；CrCl 體重採「${r.crclWeight.label}」。` });
+    else extra.push({ level: 'info', msg: `CrCl 體重採「${r.crclWeight.label}」；負荷 mg/kg 用 TBW，維持以族群 CL 反推目標 AUC。` });
     if (r.loadingCapped) extra.push({ level: 'info', msg: '✱ 負荷已封頂於 3000 mg。' });
     renderWarnings($('e-warnings'), extra.concat(r.warnings));
 
     // Plan（可複製）：僅行動，病人/腎功能/判讀見 Assessment
     const sex = document.querySelector('input[name="e-sex"]:checked').value === 'M' ? '男' : '女';
-    const lines = ['【Vancomycin 起始劑量 Plan】'];
-    if (icu) lines.push(`負荷：${r.loadingDose} mg IV（TBW）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
+    const lines = [`【Vancomycin 起始劑量 Plan】${crass ? '（Crass 肥胖 CL 模型）' : ''}`];
+    if (icu) lines.push(`負荷：${r.loadingDose} mg IV（${crass ? 'Crass nomogram' : 'TBW'}）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
     lines.push(
       `維持：${r.maintenanceDose} mg IV q${r.maintenanceInterval}h（${fmt(r.maintenanceDailyMg, 0)} mg/day）→ 預測 AUC24 ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）、峰/谷 ${fmt(r.predictedPeak, 1)}/${fmt(r.predictedTrough, 1)}`,
       '監測：24–48h 內採雙點濃度驗證 AUC 後調整。',
@@ -124,12 +132,13 @@
     const eAucOk = r.predictedAuc24 >= VANCO.AUC_TARGET_MIN && r.predictedAuc24 <= VANCO.AUC_TARGET_MAX;
     const eA = [
       '【Vancomycin 評估 Assessment】（經驗起始，尚無血中濃度）',
-      `病人：${num('e-age')}歲 ${sex}，${num('e-tbw')}kg / ${num('e-height')}cm，SCr ${num('e-scr')} mg/dL`,
-      `腎功能：CrCl (Cockcroft-Gault，${r.crclWeight.label} ${fmt(r.crclWeight.weight, 1)}kg) = ${fmt(r.crcl, 0)} mL/min；族群 CL (Matzke) ${fmt(r.clPop, 2)} L/h`,
-      `建議方案（${r.maintenanceDose} q${r.maintenanceInterval}h）預測 AUC₂₄ ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）→ ${eAucOk ? '達標' : '偏離，需檢視'}`,
+      `病人：${num('e-age')}歲 ${sex}，${num('e-tbw')}kg / ${num('e-height')}cm（BMI ${fmt(r.bmi, 1)}），SCr ${num('e-scr')} mg/dL`,
+      `腎功能：CrCl (Cockcroft-Gault，${r.crclWeight.label} ${fmt(r.crclWeight.weight, 1)}kg) = ${fmt(r.crcl, 0)} mL/min；${crass ? '肥胖 CLV (Crass)' : '族群 CL (Matzke)'} ${fmt(r.clPop, 2)} L/h`,
+      `建議方案（${r.maintenanceDose} q${r.maintenanceInterval}h）預測 AUC₂₄ ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）→ ${eAucOk ? '達標' : '偏離，需檢視'}${crass && r.nomogram ? `；Crass nomogram 對照 ${r.nomogram.maint} q${r.nomogram.tau}h` : ''}`,
     ];
-    if (icu) eA.push(`重症/嚴重 MRSA：已納入負荷 ${r.loadingDose} mg（TBW）。`);
-    if (eObese) eA.push('肥胖：族群 CL 為粗估，建議儘早雙點/Bayesian 驗證。');
+    if (icu) eA.push(`重症/嚴重 MRSA：已納入負荷 ${r.loadingDose} mg（${crass ? 'nomogram' : 'TBW'}）。`);
+    if (eObese && !crass) eA.push('肥胖：Matzke 族群 CL 為粗估，建議切換 Crass 肥胖 CL 模型或儘早雙點驗證。');
+    else if (eObese && crass) eA.push('肥胖：已採 Crass 肥胖 pop-PK（TBW allometric）；仍建議 24–48h 雙點驗證。');
     if (r.crcl < 30) eA.push('腎功能不全：間隔已延長，須密切監測。');
     eA.push('屬經驗估計，須 24–48h 內採濃度驗證。');
     $('e-assess').textContent = eA.join('\n');
@@ -140,6 +149,21 @@
   wireCopy('e-copy', () => $('e-plan').textContent);
   // 滑桿即時顯示目標 AUC 值
   $('e-target').addEventListener('input', () => { $('e-target-val').textContent = $('e-target').value; });
+  // CL 模型即時提示：BMI≥30 建議 Crass、<30 建議 Matzke
+  function updateClModelHint() {
+    const h = num('e-height'), w = num('e-tbw');
+    const sel = document.querySelector('input[name="e-clmodel"]:checked').value;
+    const hint = $('e-clmodel-hint');
+    hint.style.color = '';
+    if (isFinite(h) && h > 0 && isFinite(w) && w > 0) {
+      const bmi = w / Math.pow(h / 100, 2);
+      if (bmi >= 30 && sel === 'matzke') { hint.textContent = `BMI ${bmi.toFixed(1)} → 建議 Crass`; hint.style.color = 'var(--color-amber)'; return; }
+      if (bmi < 30 && sel === 'crass') { hint.textContent = `BMI ${bmi.toFixed(1)} < 30 → 建議 Matzke`; hint.style.color = 'var(--color-amber)'; return; }
+    }
+    hint.textContent = sel === 'crass' ? '肥胖族群' : '一般族群';
+  }
+  ['e-height', 'e-tbw'].forEach((id) => $(id).addEventListener('input', updateClModelHint));
+  document.querySelectorAll('input[name="e-clmodel"]').forEach((el) => el.addEventListener('change', updateClModelHint));
 
   // ---------- Mode 2：雙點反算 ----------
   $('a-calc').addEventListener('click', () => {

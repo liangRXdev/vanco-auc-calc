@@ -55,6 +55,55 @@ const VANCO = Object.freeze({
   }),
 });
 
+/**
+ * CRASS — Crass 2018 肥胖/超級肥胖族群 CLV（一室），供 Mode 1 經驗劑量的肥胖 CL 模型選項。
+ * 來源：Crass RL, et al. J Antimicrob Chemother 2018;73:3081-3086（DOI 10.1093/jac/dky310）。
+ *   wiki: source-crass2018-vancomycin-super-obese
+ * CLV(L/h) = 9.656 − 0.078×Age − 2.009×SCr + 1.09×Sex + 0.04×TBW^0.75
+ *   Age 歲；SCr mg/dL（IDMS 標準化）；Sex 1(男)/0(女)；TBW kg（實際體重，allometric 0.75）。
+ * 適用族群：BMI≥30、CLcr(Cockcroft-Gault, AdjBW)≥30；CLV<0.5 超出建模族群不建議。
+ */
+const CRASS = Object.freeze({
+  INTERCEPT: 9.656,
+  AGE: 0.078,
+  SCR: 2.009,
+  SEX: 1.09,          // 男 +1.09 L/h
+  TBW_COEF: 0.04,
+  TBW_EXP: 0.75,      // allometric
+
+  // 分布容積：0.8 L/kg TBW；BMI 40–49.9 → 0.52；BMI ≥50 → 0.42（超肥胖 Vd/kg 下降）
+  VD_LKG: 0.8,
+  VD_BMI40: 0.52,
+  VD_BMI50: 0.42,
+
+  // 適用門檻
+  BMI_OBESE: 30,      // 建模族群下限
+  CLCR_MIN: 30,       // 建模排除 CLcr<30
+  CLV_MIN_REC: 0.5,   // CLV<0.5 L/h 無建議（Table 2 footnote a）
+
+  // 負荷（Table 2 nomogram，近乎固定，非 mg/kg）：CLV<8 → 2500、≥8 → 3000
+  LOAD_LOW: 2500,
+  LOAD_HIGH: 3000,
+  LOAD_HIGH_CLV: 8,
+
+  // 間隔（nomogram）：CLV<4 → q24、≥4 → q12
+  TAU_SWITCH_CLV: 4,
+
+  // Table 2 nomogram（依估計 CLV 的整數 bin；load / maint(mg) / tau(h)；供對照顯示）
+  NOMOGRAM: [
+    { clv: 1, load: 2500, maint: 500, tau: 24 },
+    { clv: 2, load: 2500, maint: 1000, tau: 24 },
+    { clv: 3, load: 2500, maint: 1500, tau: 24 },
+    { clv: 4, load: 2500, maint: 1000, tau: 12 },
+    { clv: 5, load: 2500, maint: 1250, tau: 12 },
+    { clv: 6, load: 2500, maint: 1500, tau: 12 },
+    { clv: 7, load: 2500, maint: 1750, tau: 12 },
+    { clv: 8, load: 3000, maint: 2000, tau: 12 },
+    { clv: 9, load: 3000, maint: 2250, tau: 12 },
+    { clv: 10, load: 3000, maint: 2250, tau: 12 },
+  ],
+});
+
 // Cockcroft-Gault 體重選用門檻（肥胖用 AdjBW）
 const CG = Object.freeze({
   OBESE_TBW_OVER_IBW: 1.2,    // TBW > 1.2×IBW 視為肥胖 → 用 AdjBW
@@ -98,11 +147,12 @@ const GOTI = Object.freeze({
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { VANCO, CG, GOTI };
+  module.exports = { VANCO, CG, GOTI, CRASS };
 } else {
   // 瀏覽器：classic script 的 top-level const 不會掛上 window，手動附掛供 pk.js 讀取
   const g = (typeof self !== 'undefined') ? self : this;
   g.VANCO = VANCO;
   g.CG = CG;
   g.GOTI = GOTI;
+  g.CRASS = CRASS;
 }

@@ -11,6 +11,7 @@
   const C = (typeof require !== 'undefined') ? require('./constants.js') : root;
   const VANCO = C.VANCO;
   const CG = C.CG;
+  const CRASS = C.CRASS;
 
   // ---------- 體重 ----------
   /** Devine 理想體重 (kg)。sexMale: boolean；heightCm: number */
@@ -55,25 +56,40 @@
   // ---------- Mode 1：經驗起始劑量 ----------
   /**
    * 依 actual body weight 給負荷 + 維持起始建議（尚無血中濃度）。
-   * 負荷用 mg/kg（Vd 相關）；維持用族群 CL 反推 AUC（取代 mg/kg，避免衝破 AUC）。
-   * input: { tbw, sexMale, heightCm, age, scr, criticallyIll, targetAuc? }
+   * 維持用族群 CL 反推 AUC（取代 mg/kg，避免衝破 AUC）。
+   * CL 模型可選：'matzke'（預設，一般族群）或 'crass'（肥胖 pop-PK，Crass 2018）。
+   * input: { tbw, sexMale, heightCm, age, scr, criticallyIll, targetAuc?, clModel? }
    */
   function empiricDosing(input) {
     const { tbw, sexMale, heightCm, age, scr, criticallyIll } = input;
     const targetAuc = input.targetAuc || VANCO.AUC_TARGET_DEFAULT;
+    const clModel = input.clModel === 'crass' ? 'crass' : 'matzke';
     const ibw = idealBodyWeight(sexMale, heightCm);
     const cw = crclDosingWeight(tbw, ibw);
     const crcl = cockcroftGault(age, cw.weight, scr, sexMale);
+    const bmi = tbw / Math.pow(heightCm / 100, 2);
 
-    // 負荷（重症/嚴重感染）：20–25 mg/kg TBW，cap 3000
-    const loadingRaw = ((VANCO.LOADING_MGKG_MIN + VANCO.LOADING_MGKG_MAX) / 2) * tbw;
-    const loading = Math.min(roundDose(loadingRaw), VANCO.LOADING_CAP_MG);
+    let clPop, vdPop, loading, loadingCapped, interval, nomogram = null;
+    if (clModel === 'crass') {
+      // 肥胖 CL 模型（一室）：CLV(age/SCr/sex/TBW^0.75)；Vd 依 BMI 分段；負荷/間隔採 nomogram
+      clPop = crassClVanco(age, scr, sexMale, tbw);
+      vdPop = crassVd(tbw, bmi);
+      loading = crassLoading(clPop);
+      loadingCapped = false;               // Crass 負荷為固定 nomogram 值（非 mg/kg 封頂）
+      interval = suggestIntervalByClv(clPop);
+      nomogram = crassNomogramRow(clPop);  // 對照 Table 2
+    } else {
+      // Matzke：族群 CL 反推 AUC；負荷 mg/kg TBW cap 3000
+      clPop = matzkeClVanco(crcl);
+      vdPop = VANCO.VD_LKG_DEFAULT * tbw;
+      const loadingRaw = ((VANCO.LOADING_MGKG_MIN + VANCO.LOADING_MGKG_MAX) / 2) * tbw;
+      loading = Math.min(roundDose(loadingRaw), VANCO.LOADING_CAP_MG);
+      loadingCapped = loadingRaw > VANCO.LOADING_CAP_MG;
+      interval = suggestIntervalByCrCl(crcl);
+    }
 
-    // 維持：族群 CLvanco（Matzke）→ TDD = 目標 AUC × CL → 依間隔分配
-    const clPop = matzkeClVanco(crcl);              // L/h
-    const vdPop = VANCO.VD_LKG_DEFAULT * tbw;       // L（峰/谷預測用）
+    // 維持：TDD = 目標 AUC × CL → 依間隔分配
     const tddTarget = targetAuc * clPop;            // mg/day
-    const interval = suggestIntervalByCrCl(crcl);
     const maintPerDose = roundDose(tddTarget * (interval / 24));
     const maintDaily = maintPerDose * (24 / interval);
     const predictedAuc24 = maintDaily / clPop;
@@ -83,9 +99,10 @@
     const pt = steadyStatePeakTrough(maintPerDose, interval, VANCO.EMPIRIC_TINF_H, kePop, vdPop);
 
     return {
+      clModel, bmi,
       ibw, crclWeight: cw, crcl,
       loadingDose: loading,
-      loadingCapped: loadingRaw > VANCO.LOADING_CAP_MG,
+      loadingCapped,
       clPop, vdPop, targetAuc, tddTarget,
       maintenanceDose: maintPerDose,
       maintenanceInterval: interval,
@@ -93,7 +110,8 @@
       predictedAuc24,
       predictedPeak: pt.peak,
       predictedTrough: pt.trough,
-      warnings: empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough: pt.trough, tbw, ibw }),
+      nomogram,
+      warnings: empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough: pt.trough, tbw, ibw, clModel, bmi, clPop }),
     };
   }
 
@@ -103,12 +121,41 @@
     return mlmin * 60 / 1000; // mL/min → L/h
   }
 
-  /** 依 CrCl 粗略建議間隔（起始參考，仍需 TDM 校正）*/
+  /** Crass 2018 肥胖 CLV（一室，L/h）。age歲/scr mg-dL(IDMS)/sexMale/TBW實際體重kg。 */
+  function crassClVanco(age, scr, sexMale, tbw) {
+    return CRASS.INTERCEPT - CRASS.AGE * age - CRASS.SCR * scr
+      + CRASS.SEX * (sexMale ? 1 : 0) + CRASS.TBW_COEF * Math.pow(tbw, CRASS.TBW_EXP);
+  }
+
+  /** Crass 肥胖 Vd (L)：0.8 L/kg TBW；BMI 40–49.9→0.52、≥50→0.42。 */
+  function crassVd(tbw, bmi) {
+    const perKg = bmi >= 50 ? CRASS.VD_BMI50 : bmi >= 40 ? CRASS.VD_BMI40 : CRASS.VD_LKG;
+    return perKg * tbw;
+  }
+
+  /** Crass nomogram 負荷：CLV≥8→3000、否則 2500 (mg)。 */
+  function crassLoading(clv) {
+    return clv >= CRASS.LOAD_HIGH_CLV ? CRASS.LOAD_HIGH : CRASS.LOAD_LOW;
+  }
+
+  /** 取最接近估計 CLV 的 nomogram bin（Table 2）供對照；CLV<0.5 回 null。 */
+  function crassNomogramRow(clv) {
+    if (clv < CRASS.CLV_MIN_REC) return null;
+    const bin = Math.max(1, Math.min(10, Math.round(clv)));
+    return CRASS.NOMOGRAM.find((r) => r.clv === bin) || null;
+  }
+
+  /** 依 CrCl 粗略建議間隔（Matzke 路徑；仍需 TDM 校正）*/
   function suggestIntervalByCrCl(crcl) {
     if (crcl >= 90) return 8;
     if (crcl >= 50) return 12;
     if (crcl >= 20) return 24;
     return 48; // <20：延長，密切監測
+  }
+
+  /** Crass nomogram 間隔：CLV<4→q24、≥4→q12。 */
+  function suggestIntervalByClv(clv) {
+    return clv < CRASS.TAU_SWITCH_CLV ? 24 : 12;
   }
 
   // ---------- 穩態峰/谷 與 方案試算（共用）----------
@@ -228,11 +275,20 @@
   }
 
   // ---------- 警示 ----------
-  function empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough, tbw, ibw }) {
+  function empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough, tbw, ibw, clModel, bmi, clPop }) {
     const w = [];
     const obese = tbw > CG.OBESE_TBW_OVER_IBW * ibw;
-    if (crcl < 30) w.push({ level: 'warn', msg: `CrCl ${crcl.toFixed(0)} mL/min 偏低，間隔已延長；腎功能不穩者須每次調整後重採血。` });
-    if (obese) w.push({ level: 'warn', msg: `肥胖患者：族群 CL（Matzke）可能偏差，此為粗估；建議儘早雙點 TDM。肥胖專用 pop-PK（Crass CLV）為後續版本。` });
+    const crass = clModel === 'crass';
+    if (crcl < 30) w.push({ level: 'warn', msg: `CrCl ${crcl.toFixed(0)} mL/min 偏低${crass ? '（Crass 建模排除 CLcr<30，肥胖 CL 模型外推性差，建議改 Matzke + 密集 TDM）' : '，間隔已延長'}；腎功能不穩者須每次調整後重採血。` });
+    if (crass) {
+      if (bmi < CRASS.BMI_OBESE)
+        w.push({ level: 'warn', msg: `BMI ${bmi.toFixed(1)} < 30：Crass 模型建立於肥胖族群，非肥胖者請改用 Matzke。` });
+      if (clPop < CRASS.CLV_MIN_REC)
+        w.push({ level: 'warn', msg: `估計 CLV ${clPop.toFixed(2)} < 0.5 L/h：超出 Crass 建模族群，無 nomogram 建議，須臨床判斷 + 密集 TDM。` });
+      w.push({ level: 'info', msg: `肥胖 CL 模型：Crass 2018（CLV=age/SCr/sex/TBW^0.75，SCr 須 IDMS）；維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）。` });
+    } else if (obese) {
+      w.push({ level: 'warn', msg: `肥胖患者：Matzke 族群 CL 可能偏差（一般族群回歸）；建議切換「Crass 肥胖 CL 模型」，或儘早雙點 TDM。` });
+    }
     if (obese && maintDaily > VANCO.MAINT_MONITOR_MGDAY)
       w.push({ level: 'warn', msg: `維持 ${maintDaily.toFixed(0)} mg/day > ${VANCO.MAINT_MONITOR_MGDAY}：需早期強化 AUC 監測（Rybak Rec 13）。` });
     if (predictedTrough > VANCO.TROUGH_AKI_REF)
@@ -256,7 +312,8 @@
 
   const api = {
     idealBodyWeight, adjustedBodyWeight, crclDosingWeight, cockcroftGault,
-    roundDose, suggestIntervalByCrCl, matzkeClVanco,
+    roundDose, suggestIntervalByCrCl, suggestIntervalByClv, matzkeClVanco,
+    crassClVanco, crassVd, crassLoading, crassNomogramRow,
     empiricDosing, twoLevelAUC, validateTwoLevel,
     steadyStatePeakTrough, simulateRegimen,
   };

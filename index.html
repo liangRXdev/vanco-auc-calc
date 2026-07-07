@@ -28,7 +28,7 @@
           <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
         </div>
       </div>
-      <span class="header__version">v0.3.2</span>
+      <span class="header__version">v0.4.0</span>
     </div>
   </header>
 
@@ -82,6 +82,13 @@
             <label class="segmented__opt segmented__opt--check">
               <input type="checkbox" id="e-icu"><span>重症 / 嚴重 MRSA 感染（給予負荷劑量）</span>
             </label>
+          </div>
+          <div class="field field--full">
+            <label class="field__label">族群 CL 模型 <span class="field__unit" id="e-clmodel-hint">一般族群</span></label>
+            <div class="segmented">
+              <label class="segmented__opt"><input type="radio" name="e-clmodel" value="matzke" checked><span>Matzke（一般）</span></label>
+              <label class="segmented__opt"><input type="radio" name="e-clmodel" value="crass"><span>Crass（肥胖）</span></label>
+            </div>
           </div>
           <div class="field field--full">
             <label class="field__label" for="e-target">目標 AUC₂₄　<span class="field__unit slider__val" id="e-target-val">500</span> mg·h/L</label>
