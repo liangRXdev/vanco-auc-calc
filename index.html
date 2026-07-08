@@ -28,7 +28,7 @@
           <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
         </div>
       </div>
-      <span class="header__version">v0.4.0</span>
+      <span class="header__version">v0.4.1</span>
     </div>
   </header>
 
@@ -96,11 +96,23 @@
             <div class="slider__scale"><span>400</span><span>500</span><span>600</span></div>
           </div>
         </div>
+
+        <details class="declare">
+          <summary class="declare__summary">臨床聲明（選填，無法自動偵測）</summary>
+          <p class="hint hint--muted">下列情況會降低起始估計的信心；系統無法自動判定，請依實際勾選。經驗起始仍會給建議劑量，但須及早採濃度驗證。</p>
+          <div class="declare__grid">
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="e-aki"><span>腎功能快速變化 / AKI（族群 CL 由單次 SCr 推估不可靠 → 及早複驗）</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="e-preg"><span>懷孕</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="e-cf"><span>囊狀纖維化（CF）</span></label>
+          </div>
+        </details>
+
         <button class="btn btn--primary" id="e-calc">計算起始劑量</button>
       </div>
 
       <div class="card card--result" id="e-result" hidden>
         <h2 class="card__title">建議</h2>
+        <div class="confidence" id="e-confidence"></div>
         <div class="result-grid" id="e-output"></div>
         <div class="warnings" id="e-warnings"></div>
         <div class="plan plan--assess">
@@ -157,14 +169,29 @@
           </div>
         </div>
         <p class="hint hint--muted">💡 峰通常於輸注結束後 1–2h 採（此值 = 輸注時長 + 1~2）、谷於間隔末採。兩點皆須在輸注結束後。</p>
+
+        <details class="declare">
+          <summary class="declare__summary">臨床聲明（選填，無法自動偵測）</summary>
+          <p class="hint hint--muted">下列情況會降低估計信心或使外推的維持劑量不可靠；系統無法自動判定，請依實際勾選。</p>
+          <div class="declare__grid">
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="a-aki"><span>腎功能快速變化 / AKI（線性外推維持劑量不可靠）</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="a-dosetime"><span>給藥時間不可靠</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="a-sampletime"><span>採血時間不可靠</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="a-preg"><span>懷孕</span></label>
+            <label class="segmented__opt segmented__opt--check"><input type="checkbox" id="a-cf"><span>囊狀纖維化（CF）</span></label>
+          </div>
+        </details>
+
         <button class="btn btn--primary" id="a-calc">計算 AUC 與調整建議</button>
       </div>
 
       <div class="card card--result" id="a-result" hidden>
         <h2 class="card__title">結果</h2>
         <div class="auc-hero" id="a-hero"></div>
+        <div class="confidence" id="a-confidence"></div>
         <div class="result-grid" id="a-pk"></div>
         <h3 class="subhead">達目標（AUC 500）各間隔劑量建議</h3>
+        <p class="hint hint--muted" id="a-rec-caveat" hidden></p>
         <div class="table-scroll">
           <table class="dose-table" id="a-table"></table>
         </div>

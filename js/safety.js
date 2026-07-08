@@ -81,10 +81,14 @@
    *   系統可判定：age, crrt, sled, ecmo, dialysis(HD 被選)
    *   使用者聲明：declaredAKI, declaredUnreliableDoseTiming, declaredUnreliableSampleTiming,
    *              pregnant, cysticFibrosis
+   * mode（optional）：1=經驗起始／2=雙點反算／3=Bayesian。
+   *   影響 AKI 的處置——Mode 1 為經驗起始（無實測濃度、仍須給起始劑量），AKI 只降信心不封鎖
+   *   劑量；Mode 2/3 依實測濃度外推/投影，AKI 使外推不可靠 → 封鎖劑量建議（維持原行為）。
    */
-  function evaluateEligibility(input) {
+  function evaluateEligibility(input, mode) {
     const i = input || {};
     const m = [];
+    const empiric = mode === 1;
     let confidence = 'High';
     let allowDoseRecommendation = true;
 
@@ -113,10 +117,18 @@
 
     // --- 使用者聲明（無法自動偵測）---
     if (i.declaredAKI) {
-      m.push(msg('E_AKI', 'warn',
-        '已聲明腎功能快速變化 / AKI：CL 由單一時點外推至穩態不可靠，僅供參考，不產生劑量建議。'));
-      confidence = lowerConf(confidence, 'Low');
-      allowDoseRecommendation = false;
+      if (empiric) {
+        m.push(msg('E_AKI', 'warn',
+          '已聲明腎功能快速變化 / AKI：族群 CL 由單次 SCr 推估不可靠，此為起始估計；'
+          + '建議 24h 內採濃度複驗，勿沿用固定維持劑量。'));
+        confidence = lowerConf(confidence, 'Low');
+        // 經驗起始須給起始劑量 → 不封鎖劑量建議（僅降信心並提示及早複驗）
+      } else {
+        m.push(msg('E_AKI', 'warn',
+          '已聲明腎功能快速變化 / AKI：CL 由單一時點外推至穩態不可靠，僅供參考，不產生劑量建議。'));
+        confidence = lowerConf(confidence, 'Low');
+        allowDoseRecommendation = false;
+      }
     }
     if (i.declaredUnreliableDoseTiming) {
       m.push(msg('E_DOSE_TIMING', 'warn',
@@ -154,7 +166,13 @@
     const i = input || {};
     const m = [];
     let tier = 'High';
-    if (mode === 3) {
+    if (mode === 1) {
+      // 經驗起始：無實測濃度，全依族群 PK 推估 → 本質為起始估計，信心 Moderate。
+      tier = 'Moderate';
+      m.push(msg('DQ_EMPIRIC', 'info',
+        '經驗起始：無實測濃度，依族群 PK（Cockcroft-Gault + 族群 CL）推估 → 信心 Moderate；'
+        + '建議 24–48h 內採濃度驗證後再調整。'));
+    } else if (mode === 3) {
       const nonSteady = i.steadyState === false;
       if (nonSteady) {
         tier = 'Low';
@@ -301,13 +319,13 @@
   // ---------- 聚合入口 ----------
   /**
    * 依 context 呼叫相關子檢查並合併。context 欄位皆 optional：
-   *   { eligibility, dataQuality:{input,mode}, concentrations:{levels,dosing,pk},
-   *     bayesFit, auc }
+   *   { mode(1|2|3，傳給 eligibility 決定 AKI 處置), eligibility,
+   *     dataQuality:{input,mode}, concentrations:{levels,dosing,pk}, bayesFit, auc }
    */
   function buildSafetyMessages(context) {
     const c = context || {};
     const parts = [];
-    if (c.eligibility) parts.push(evaluateEligibility(c.eligibility));
+    if (c.eligibility) parts.push(evaluateEligibility(c.eligibility, c.mode));
     if (c.dataQuality) parts.push(evaluateDataQuality(c.dataQuality.input, c.dataQuality.mode));
     if (c.concentrations) parts.push(validateConcentrations(c.concentrations.levels, c.concentrations.dosing, c.concentrations.pk));
     if (c.bayesFit) parts.push(validateBayesianFit(c.bayesFit));

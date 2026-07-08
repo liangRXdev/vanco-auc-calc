@@ -26,7 +26,11 @@ c('C03', v.status === 'WARNING' && v.allowCalculation && !v.allowDoseRecommendat
 
 v = S.evaluateEligibility({ age: 60, declaredAKI: true });
 c('C04', v.status === 'WARNING' && !v.allowDoseRecommendation && has(v, 'E_AKI'),
-  '聲明 AKI → WARNING、不給劑量建議');
+  '聲明 AKI（預設/Mode 2/3）→ WARNING、不給劑量建議');
+
+v = S.evaluateEligibility({ age: 60, declaredAKI: true }, 1);
+c('C04b', v.status === 'WARNING' && v.allowDoseRecommendation && v.confidence === 'Low' && has(v, 'E_AKI'),
+  '聲明 AKI（Mode 1 經驗）→ WARNING、仍給起始劑量但信心降 Low');
 
 v = S.evaluateEligibility({ age: 30, pregnant: true });
 c('C05', v.status === 'WARNING' && v.allowCalculation && v.allowDoseRecommendation && has(v, 'E_PREGNANT'),
@@ -123,6 +127,9 @@ c('C26b', v.confidence === 'High' && has(v, 'DQ_TWO_LEVEL'), '穩態雙點 → H
 
 v = S.evaluateDataQuality({ nLevels: 1, steadyState: true }, 3);
 c('C26c', v.confidence === 'Moderate' && has(v, 'DQ_SINGLE_LEVEL'), '穩態單點 → Moderate 信心');
+
+v = S.evaluateDataQuality({}, 1);
+c('C26d', v.confidence === 'Moderate' && has(v, 'DQ_EMPIRIC'), 'Mode 1 經驗（無實測濃度）→ Moderate 信心');
 
 // ─────────── merge / buildSafetyMessages ───────────
 console.log('\n--- 合併 ---');

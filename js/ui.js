@@ -45,6 +45,16 @@
   function safetyWarnings(verdict) {
     return (verdict.messages || []).map((m) => ({ level: SEV2LEVEL[m.severity] || 'info', msg: m.text }));
   }
+  // 資料信心 badge（三模式共用）：tier 由 safety verdict 合併得出（L2 shrinkage 背書）
+  function renderConfidence(el, verdict, reasons, baseNote) {
+    const tier = verdict.confidence; // High / Moderate / Low / Invalid
+    const cls = tier === 'High' ? 'high' : tier === 'Moderate' ? 'moderate' : 'low';
+    const rs = (reasons || []).filter(Boolean);
+    const note = rs.length ? `影響因子：${rs.join('、')}` : baseNote;
+    el.innerHTML =
+      `<span class="confidence__badge confidence__badge--${cls}">資料信心：${tier}</span>` +
+      `<span class="confidence__note">${esc(note)}</span>`;
+  }
   // AUC>600 結構化處置卡片（取代單行減量建議）
   function managementCardHTML(title) {
     const items = SAFETY.auc600Management().map((s) => `<li>${esc(s)}</li>`).join('');
@@ -110,11 +120,28 @@
       metric(`預測 AUC₂₄（目標 ${targetAuc}）`, fmt(r.predictedAuc24, 0), 'mg·h/L', true) +
       metric('預測峰 / 谷', `${fmt(r.predictedPeak, 1)} / ${fmt(r.predictedTrough, 1)}`, 'mg/L') +
       (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : '');
+    // 臨床聲明（無法自動偵測）+ 資料信心（經驗＝無實測濃度，本質 Moderate；AKI 降 Low）
+    const declareE = {
+      declaredAKI: $('e-aki').checked,
+      pregnant: $('e-preg').checked,
+      cysticFibrosis: $('e-cf').checked,
+    };
+    const sfE = SAFETY.buildSafetyMessages({
+      mode: 1,
+      eligibility: Object.assign({ age: num('e-age') }, declareE),
+      dataQuality: { input: {}, mode: 1 },
+    });
+    renderConfidence($('e-confidence'), sfE, [
+      declareE.declaredAKI && 'AKI', declareE.pregnant && '懷孕', declareE.cysticFibrosis && 'CF',
+    ], '經驗起始（無實測濃度）→ 須及早採濃度驗證');
+
     const extra = [];
     if (crass) extra.push({ level: 'info', msg: `肥胖 CL 模型（Crass 2018）：維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）；CrCl 體重採「${r.crclWeight.label}」。` });
     else extra.push({ level: 'info', msg: `CrCl 體重採「${r.crclWeight.label}」；負荷 mg/kg 用 TBW，維持以族群 CL 反推目標 AUC。` });
     if (r.loadingCapped) extra.push({ level: 'info', msg: '✱ 負荷已封頂於 3000 mg。' });
-    renderWarnings($('e-warnings'), extra.concat(r.warnings));
+    // 聲明產生的 warn（AKI/懷孕/CF）併入；info 級（DQ_EMPIRIC）已由信心 badge 表達，不重複
+    const eligWarns = safetyWarnings(sfE).filter((w) => w.level !== 'info');
+    renderWarnings($('e-warnings'), extra.concat(eligWarns, r.warnings));
 
     // Plan（可複製）：僅行動，病人/腎功能/判讀見 Assessment
     const sex = document.querySelector('input[name="e-sex"]:checked').value === 'M' ? '男' : '女';
@@ -140,6 +167,8 @@
     if (eObese && !crass) eA.push('肥胖：Matzke 族群 CL 為粗估，建議切換 Crass 肥胖 CL 模型或儘早雙點驗證。');
     else if (eObese && crass) eA.push('肥胖：已採 Crass 肥胖 pop-PK（TBW allometric）；仍建議 24–48h 雙點驗證。');
     if (r.crcl < 30) eA.push('腎功能不全：間隔已延長，須密切監測。');
+    const eReasons = [declareE.declaredAKI && 'AKI', declareE.pregnant && '懷孕', declareE.cysticFibrosis && 'CF'].filter(Boolean);
+    eA.push(`資料信心：${sfE.confidence}（經驗起始，無實測濃度${eReasons.length ? '；' + eReasons.join('、') : ''}）`);
     eA.push('屬經驗估計，須 24–48h 內採濃度驗證。');
     $('e-assess').textContent = eA.join('\n');
 
@@ -223,8 +252,18 @@
     $('a-table').innerHTML =
       `<thead><tr><th>間隔</th><th>每次 (mg)</th><th>每日 (mg)</th><th>峰 (mg/L)</th><th>谷 (mg/L)</th><th>預估 AUC₂₄</th></tr></thead><tbody>${rows}</tbody>`;
 
-    // Safety 層（分布相取樣分級 + AUC>600 處置）
+    // 臨床聲明（無法自動偵測）
+    const declareA = {
+      declaredAKI: $('a-aki').checked,
+      declaredUnreliableDoseTiming: $('a-dosetime').checked,
+      declaredUnreliableSampleTiming: $('a-sampletime').checked,
+      pregnant: $('a-preg').checked,
+      cysticFibrosis: $('a-cf').checked,
+    };
+    // Safety 層（eligibility 聲明 + 分布相取樣分級 + AUC>600 處置）
     const sf = SAFETY.buildSafetyMessages({
+      mode: 2,
+      eligibility: declareA,
       concentrations: {
         levels: { c1: input.c1, t1: input.t1, c2: input.c2, t2: input.t2 },
         dosing: { tau: input.tau, tInf: input.tInf },
@@ -232,6 +271,26 @@
       },
     });
     const aucHigh = r.auc24 > VANCO.AUC_AKI_THRESHOLD;
+
+    // 資料信心 badge（eligibility + 取樣時相合併；量測 AUC 本質可信，聲明/分布相會降信心）
+    renderConfidence($('a-confidence'), sf, [
+      (input.t1 - input.tInf) < 1 && '峰採樣接近分布相',
+      declareA.declaredAKI && 'AKI',
+      declareA.declaredUnreliableDoseTiming && '給藥時間不可靠',
+      declareA.declaredUnreliableSampleTiming && '採血時間不可靠',
+      declareA.pregnant && '懷孕',
+      declareA.cysticFibrosis && 'CF',
+    ], '穩態雙點量測、取樣時相合理');
+
+    // AKI 等聲明使外推維持劑量不可靠 → 對「達目標各間隔劑量表」加註（量測 AUC 仍有效，不隱藏表）
+    const caveatEl = $('a-rec-caveat');
+    if (!sf.allowDoseRecommendation) {
+      caveatEl.hidden = false;
+      caveatEl.textContent = '⚠️ 已聲明腎功能快速變化 / AKI：下表為線性外推的維持劑量，於腎功能不穩時不可靠，'
+        + '須以重複濃度重新評估，勿直接延用。量測 AUC₂₄ 本身仍有效。';
+    } else {
+      caveatEl.hidden = true; caveatEl.textContent = '';
+    }
 
     // 警示：safety 分布相訊息 + 既有域警示；AUC>600 改結構化處置、不出單行外推劑量
     const distMsgs = safetyWarnings(sf).filter((w) => w.level !== 'info' || true);
@@ -269,6 +328,13 @@
         : '暴露不足，需上調日劑量以達 AUC 500（方案見 Plan）。',
     ];
     if (mic >= VANCO.MIC_ALT_AGENT) aA.push(`MIC ≥ ${VANCO.MIC_ALT_AGENT}：傳統劑量難達標，考慮換藥。`);
+    const aReasons = [
+      declareA.declaredAKI && 'AKI', declareA.declaredUnreliableDoseTiming && '給藥時間不可靠',
+      declareA.declaredUnreliableSampleTiming && '採血時間不可靠', declareA.pregnant && '懷孕',
+      declareA.cysticFibrosis && 'CF', (input.t1 - input.tInf) < 1 && '峰採樣接近分布相',
+    ].filter(Boolean);
+    aA.push(`資料信心：${sf.confidence}（量測 AUC${aReasons.length ? '；' + aReasons.join('、') : '、取樣時相合理'}）`);
+    if (!sf.allowDoseRecommendation) aA.push('腎功能不穩：外推維持劑量不可靠，須重複濃度重新評估。');
     $('a-assess').textContent = aA.join('\n');
 
     // 自訂試算：存個人化 PK + Plan 所需狀態，並以建議方案預填
@@ -277,6 +343,7 @@
       dose: input.dose, tau: input.tau, tddCurrent: r.tddCurrent,
       auc24: r.auc24, aucOverMic: r.aucOverMic, st, statusTxt,
       tddTarget: r.tddTarget, intervalOptions: r.intervalOptions,
+      akiExtrapUnreliable: !sf.allowDoseRecommendation,
     };
     planACustom = null;
     buildPlanA(); // 建立 Plan（無自訂時用外推方案）
@@ -298,6 +365,7 @@
       '【Vancomycin 劑量調整 Plan】',
       `現行 ${s.dose} mg q${s.tau}h（${fmt(s.tddCurrent, 0)} mg/day）→ AUC24 ${fmt(s.auc24, 0)}（${s.statusTxt}）`,
     ];
+    if (s.akiExtrapUnreliable) pl.push('⚠️ 已聲明 AKI：下列外推維持劑量不可靠，須以重複濃度重新評估，勿直接延用。');
     if (s.st === 'ok') {
       pl.push('建議：維持現方案，24–48h 後複驗。');
     } else if (s.st === 'high') {
@@ -458,23 +526,16 @@
     const canRecommend = sf.allowDoseRecommendation;
 
     // 資料信心 badge（tier 由 evaluateDataQuality/eligibility 合併，L2 shrinkage 背書）
-    (function () {
-      const tier = sf.confidence; // High / Moderate / Low
-      const cls = tier === 'High' ? 'high' : tier === 'Moderate' ? 'moderate' : 'low';
-      const reasons = [];
-      if (levels.length === 1) reasons.push('單一濃度');
-      if (!steadyState) reasons.push('非穩態');
-      if (dialysis) reasons.push('血液透析');
-      if (declare.declaredAKI) reasons.push('AKI');
-      if (declare.declaredUnreliableDoseTiming) reasons.push('給藥時間不可靠');
-      if (declare.declaredUnreliableSampleTiming) reasons.push('採血時間不可靠');
-      if (declare.pregnant) reasons.push('懷孕');
-      if (declare.cysticFibrosis) reasons.push('CF');
-      const note = reasons.length ? `影響因子：${reasons.join('、')}` : '穩態雙點，資訊量佳（L2 shrinkage ~0.21）';
-      $('b-confidence').innerHTML =
-        `<span class="confidence__badge confidence__badge--${cls}">資料信心：${tier}</span>` +
-        `<span class="confidence__note">${esc(note)}</span>`;
-    })();
+    renderConfidence($('b-confidence'), sf, [
+      levels.length === 1 && '單一濃度',
+      !steadyState && '非穩態',
+      dialysis && '血液透析',
+      declare.declaredAKI && 'AKI',
+      declare.declaredUnreliableDoseTiming && '給藥時間不可靠',
+      declare.declaredUnreliableSampleTiming && '採血時間不可靠',
+      declare.pregnant && '懷孕',
+      declare.cysticFibrosis && 'CF',
+    ], '穩態雙點，資訊量佳（L2 shrinkage ~0.21）');
 
     // Hero
     const auc = r.auc24Current;
