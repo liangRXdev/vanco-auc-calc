@@ -1,0 +1,18 @@
+{
+  "name": "萬古黴素 AUC 劑量計算器",
+  "short_name": "Vanco AUC",
+  "description": "繁體中文萬古黴素 AUC 導向劑量計算：經驗起始 + 雙點反算 + Bayesian AUC，純前端、資料不離開瀏覽器。",
+  "lang": "zh-TW",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F0F4F8",
+  "theme_color": "#1565C0",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

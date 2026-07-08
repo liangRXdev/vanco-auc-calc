@@ -12,6 +12,14 @@
   <meta property="og:title" content="萬古黴素 AUC 劑量計算器">
   <meta property="og:description" content="繁中、純前端的 Vancomycin AUC-guided 劑量工具（Rybak 2020）。">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vanco AUC">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -28,7 +36,7 @@
           <p class="header__subtitle">基於 ASHP/IDSA 2020（Rybak）共識 · AUC/MIC 400–600 · 2026 更新</p>
         </div>
       </div>
-      <span class="header__version">v0.4.1</span>
+      <span class="header__version">v0.4.2</span>
     </div>
   </header>
 
@@ -351,5 +359,13 @@
   <script src="js/bayes.js"></script>
   <script src="js/safety.js"></script>
   <script src="js/ui.js"></script>
+  <script>
+    // PWA：註冊 Service Worker（離線可用、可安裝）。失敗不影響計算功能。
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
