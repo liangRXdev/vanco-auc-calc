@@ -148,7 +148,7 @@
             <input class="field__input" type="number" id="a-tau" min="6" max="48" step="1" placeholder="12">
           </div>
           <div class="field">
-            <label class="field__label" for="a-tinf">輸注時長 <span class="field__unit">h</span></label>
+            <label class="field__label" for="a-tinf">輸注時長 <span class="field__unit">h　建議 10–15 mg/min，或 1g/60min</span></label>
             <input class="field__input" type="number" id="a-tinf" min="0.5" max="4" step="0.25" placeholder="1">
           </div>
           <div class="field">
@@ -294,7 +294,7 @@
             <input class="field__input" type="number" id="b-tau" min="6" max="48" step="1" placeholder="12">
           </div>
           <div class="field">
-            <label class="field__label" for="b-tinf">輸注時長 <span class="field__unit">h</span></label>
+            <label class="field__label" for="b-tinf">輸注時長 <span class="field__unit">h　建議 10–15 mg/min，或 1g/60min</span></label>
             <input class="field__input" type="number" id="b-tinf" min="0.5" max="4" step="0.25" placeholder="1">
           </div>
           <div class="field">
@@ -331,6 +331,27 @@
         <h3 class="subhead">達目標劑量建議（同間隔 q<span id="b-rec-tau">—</span>h）</h3>
         <div class="result-grid" id="b-rec"></div>
 
+        <h3 class="subhead">自訂方案試算（以本次 MAP 個體 PK 二室模擬）</h3>
+        <p class="hint hint--muted" id="b-sim-caveat" hidden></p>
+        <div class="sim">
+          <div class="sim__row">
+            <div class="field">
+              <label class="field__label" for="b-sim-dose">劑量 <span class="field__unit">mg</span></label>
+              <input class="field__input" type="number" id="b-sim-dose" min="100" step="50">
+            </div>
+            <div class="field">
+              <label class="field__label" for="b-sim-tau">間隔 <span class="field__unit">h</span></label>
+              <input class="field__input" type="number" id="b-sim-tau" min="4" max="72" step="1">
+            </div>
+            <div class="field">
+              <label class="field__label" for="b-sim-tinf">輸注 <span class="field__unit">h　建議 10–15 mg/min，或 1g/60min</span></label>
+              <input class="field__input" type="number" id="b-sim-tinf" min="0.5" max="12" step="0.5">
+            </div>
+            <button class="btn btn--sim" id="b-sim-calc" type="button">試算</button>
+          </div>
+          <div class="sim__out" id="b-sim-out"></div>
+        </div>
+
         <div class="warnings" id="b-warnings"></div>
         <div class="plan plan--assess">
           <div class="plan__head"><span>🩺 評估 Assessment（可複製）</span><button class="plan__copy" id="b-assess-copy" type="button">複製</button></div>
@@ -348,7 +369,7 @@
     </section>
 
     <footer class="disclaimer">
-      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。Mode 1/2 假設一室模型；Mode 3（Bayesian）用 Goti 2018 二室族群 PK 先驗（住院成人；重症/兒童外推性有限）。MIC 預設 1 mg/L。<b>血液透析為 experimental（僅估 AUC、不出劑量建議）；CRRT / SLED / ECMO / 持續輸注 / 兒童未涵蓋。</b>Mode 3 為內部自洽驗證，尚未完成獨立臨床驗證。</p>
+      <p><b>⚕️ 免責聲明：</b>本工具僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師 / 醫師覆核。Mode 1/2 假設一室模型；Mode 3（Bayesian）用 Goti 2018 二室族群 PK 先驗（住院成人；重症/兒童外推性有限）。MIC 預設 1 mg/L。<b>Mode 3「自訂方案試算」為使用者指定方案的模型投影，非本工具的劑量建議；安全閘門擋下建議時（AKI／AUC>600／HD）試算結果同不可靠，須以重複濃度重新評估。</b>輸注速率建議 10–15 mg/min（或 1g/60min），警示門檻取 >17 mg/min 或短於 60 min（各來源不一：FDA ≤10、UpToDate 10–15、仿單/實務 1g/60min）；屬給藥安全提醒、不影響 AUC 估計。Mode 1 峰/谷固定假設輸注 1h，延長輸注後實際峰值略低、AUC 不變。<b>血液透析為 experimental（僅估 AUC、不出劑量建議）；CRRT / SLED / ECMO / 持續輸注 / 兒童未涵蓋。</b>Mode 3 為內部自洽驗證，尚未完成獨立臨床驗證。</p>
       <p class="disclaimer__src">證據：Rybak 2020 ASHP/IDSA/PIDS/SIDP 共識 · Crass 2018（肥胖）· Goti 2018（Bayesian 先驗）· 計算法：Sawchuk-Zaske first-order／MAP（Sheiner-Beal）</p>
     </footer>
 

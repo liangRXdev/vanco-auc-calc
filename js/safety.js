@@ -305,6 +305,43 @@
     return verdict(m, {});
   }
 
+  // ---------- B4 給藥安全：輸注速率 ----------
+  /**
+   * 觸發警示的最短輸注時長 = max(60 min, dose ÷ 17 mg/min)。
+   * 17 刻意高於 1g/60min 的 16.7，避免對該普遍實務誤報（見 constants.js）。
+   */
+  function requiredInfusionTimeH(dose) {
+    return Math.max(VANCO.MIN_INFUSION_TIME_H, dose / (VANCO.INFUSION_RATE_WARN_MG_MIN * 60));
+  }
+
+  /**
+   * 建議輸注時長區間 [快, 慢]＝10–15 mg/min 對應時長（且不短於 60 min）。
+   * 屬建議陳述而非違規門檻——警示另由 checkInfusionRate 以 >17 mg/min 判定。
+   */
+  function advisedInfusionRangeH(dose) {
+    return [
+      Math.max(VANCO.MIN_INFUSION_TIME_H, dose / (VANCO.INFUSION_RATE_ADVICE_MAX_MG_MIN * 60)),
+      Math.max(VANCO.MIN_INFUSION_TIME_H, dose / (VANCO.INFUSION_RATE_ADVICE_MIN_MG_MIN * 60)),
+    ];
+  }
+
+  /**
+   * 輸注速率檢查：僅在 >17 mg/min（或短於 60 min）時 warn。
+   * 純給藥安全，與 AUC 估計無關（AUC=每日總量/CL，不受 tInf 影響），
+   * 故不降 confidence、不擋計算、不擋劑量建議。
+   * 輸入非有限或非正數時回傳空 verdict（交由呼叫端的輸入驗證處理）。
+   */
+  function checkInfusionRate(dose, tInf) {
+    if (!isFinite(dose) || !isFinite(tInf) || dose <= 0 || tInf <= 0) return verdict([], {});
+    const req = requiredInfusionTimeH(dose);
+    if (tInf >= req - 1e-9) return verdict([], {});
+    const rate = dose / (tInf * 60);
+    const adv = advisedInfusionRangeH(dose);
+    return verdict([msg('INFUSION_RATE_HIGH', 'warn',
+      `輸注速率 ${rate.toFixed(1)} mg/min 過快：${dose} mg 建議輸注 `
+      + `${adv[0].toFixed(1)}–${adv[1].toFixed(1)}h（10–15 mg/min，或 1g/60min）。不影響 AUC`)], {});
+  }
+
   /** AUC>600 的結構化處置清單（供 UI 取代單行減量建議）。 */
   function auc600Management() {
     return [
@@ -337,6 +374,7 @@
     evaluateEligibility, evaluateDataQuality,
     validateConcentrations, validateBayesianFit,
     classifyAUC, auc600Management,
+    requiredInfusionTimeH, advisedInfusionRangeH, checkInfusionRate,
     buildSafetyMessages, merge, verdict,
   };
 
