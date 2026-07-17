@@ -305,6 +305,31 @@
     return verdict(m, {});
   }
 
+  // ---------- B4 給藥安全：輸注速率 ----------
+  /**
+   * 必要輸注時長 = max(最短 60 min, dose ÷ 10 mg/min)——仿單速率上限與「最短 60 分鐘」
+   * 兩條規則取長者。1g≈1.7h、2g≈3.3h。
+   */
+  function requiredInfusionTimeH(dose) {
+    return Math.max(VANCO.MIN_INFUSION_TIME_H, dose / (VANCO.MAX_INFUSION_RATE_MG_MIN * 60));
+  }
+
+  /**
+   * 輸注速率檢查。純給藥安全，與 AUC 估計無關（AUC=每日總量/CL，不受 tInf 影響），
+   * 故僅 warn：不降 confidence、不擋計算、不擋劑量建議。
+   * 輸入非有限或非正數時回傳空 verdict（交由呼叫端的輸入驗證處理）。
+   */
+  function checkInfusionRate(dose, tInf) {
+    if (!isFinite(dose) || !isFinite(tInf) || dose <= 0 || tInf <= 0) return verdict([], {});
+    const req = requiredInfusionTimeH(dose);
+    if (tInf >= req - 1e-9) return verdict([], {});
+    const rate = dose / (tInf * 60);
+    return verdict([msg('INFUSION_RATE_HIGH', 'warn',
+      `輸注速率 ${rate.toFixed(1)} mg/min > ${VANCO.MAX_INFUSION_RATE_MG_MIN} mg/min：`
+      + `${dose} mg 至少需輸注 ${req.toFixed(1)} h（最短 60 min 與 ≤10 mg/min 取長）。`
+      + '過快易誘發 vancomycin flushing reaction；此為給藥速率問題，不影響上列 AUC 估計。')], {});
+  }
+
   /** AUC>600 的結構化處置清單（供 UI 取代單行減量建議）。 */
   function auc600Management() {
     return [
@@ -337,6 +362,7 @@
     evaluateEligibility, evaluateDataQuality,
     validateConcentrations, validateBayesianFit,
     classifyAUC, auc600Management,
+    requiredInfusionTimeH, checkInfusionRate,
     buildSafetyMessages, merge, verdict,
   };
 

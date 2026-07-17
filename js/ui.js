@@ -684,6 +684,7 @@
     if (planBCustom) {
       const c = planBCustom;
       pl.push(`★ 自訂選定：${c.dose} mg q${c.tau}h（輸注 ${c.tInf}h，${fmt(c.dailyMg, 0)} mg/day）→ 穩態峰/谷 ${fmt(c.peak, 1)}/${fmt(c.trough, 1)}、AUC24 ${fmt(c.auc24, 0)}（${c.tag}）`);
+      if (c.rateWarn) pl.push(`   ⚠️ 輸注速率過快：${c.dose} mg 至少需輸注 ${fmt(c.rateWarn, 1)}h（最短 60 min 與 ≤10 mg/min 取長）。`);
       if (!s.canRecommend) pl.push(`   （自訂試算為使用者指定方案之模型投影，非本工具建議；${gateNotes(s.gateReasons)}）`);
     }
     pl.push('監測：調整後 24–48h 複驗。須專業覆核。');
@@ -736,7 +737,16 @@
       '</div>' +
       `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
       (dose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
-    planBCustom = { dose, tau, tInf, dailyMg, peak: e.peak, trough: e.trough, auc24: e.auc24, tag };
+    // 輸注速率警示（給藥安全；不影響上列 AUC，故另以 alert 呈現、不混入 AUC badge）
+    const rateV = SAFETY.checkInfusionRate(dose, tInf);
+    if (rateV.messages.length) {
+      $('b-sim-out').insertAdjacentHTML('beforeend',
+        `<div class="alert alert--warn" style="margin-top:.5rem"><span>⚠️</span><span>${esc(rateV.messages[0].text)}</span></div>`);
+    }
+    planBCustom = {
+      dose, tau, tInf, dailyMg, peak: e.peak, trough: e.trough, auc24: e.auc24, tag,
+      rateWarn: rateV.messages.length ? SAFETY.requiredInfusionTimeH(dose) : null,
+    };
     buildPlanB();
   }
   $('b-sim-calc') && $('b-sim-calc').addEventListener('click', renderBSim);

@@ -33,6 +33,14 @@ const VANCO = Object.freeze({
   MAINT_MONITOR_MGDAY: 4000,     // >4000 mg/day：早期強化 AUC 監測
   MAINT_PERDOSE_PRACTICAL_MAX: 2000, // 單次維持劑量實務上限（超過標記，考慮縮短間隔）
 
+  // ---- 輸注速率（給藥安全，非 PK）----
+  // 仿單：速率 ≤10 mg/min；另有文獻採「最短 60 min」。兩條規則取長者為必要輸注時長，
+  // 即 max(60 min, dose÷10 mg/min) → 1g≈100min、1.5g≈150min、2g≈200min。
+  // 過快易誘發 vancomycin flushing reaction（舊稱 red man syndrome）。
+  // 僅屬給藥安全警示：AUC=每日總量/CL，不受 tInf 影響，故不降信心、不擋劑量建議。
+  MAX_INFUSION_RATE_MG_MIN: 10,
+  MIN_INFUSION_TIME_H: 1,
+
   // ---- Vd / 體重 ----
   VD_LKG_DEFAULT: 0.7,        // L/kg（成人一室模型常用值；經驗峰/谷預測用 Vd=0.7×TBW）
 
