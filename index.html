@@ -331,6 +331,27 @@
         <h3 class="subhead">達目標劑量建議（同間隔 q<span id="b-rec-tau">—</span>h）</h3>
         <div class="result-grid" id="b-rec"></div>
 
+        <h3 class="subhead">自訂方案試算（以本次 MAP 個體 PK 二室模擬）</h3>
+        <p class="hint hint--muted" id="b-sim-caveat" hidden></p>
+        <div class="sim">
+          <div class="sim__row">
+            <div class="field">
+              <label class="field__label" for="b-sim-dose">劑量 <span class="field__unit">mg</span></label>
+              <input class="field__input" type="number" id="b-sim-dose" min="100" step="50">
+            </div>
+            <div class="field">
+              <label class="field__label" for="b-sim-tau">間隔 <span class="field__unit">h</span></label>
+              <input class="field__input" type="number" id="b-sim-tau" min="4" max="72" step="1">
+            </div>
+            <div class="field">
+              <label class="field__label" for="b-sim-tinf">輸注 <span class="field__unit">h</span></label>
+              <input class="field__input" type="number" id="b-sim-tinf" min="0.5" max="12" step="0.5">
+            </div>
+            <button class="btn btn--sim" id="b-sim-calc" type="button">試算</button>
+          </div>
+          <div class="sim__out" id="b-sim-out"></div>
+        </div>
+
         <div class="warnings" id="b-warnings"></div>
         <div class="plan plan--assess">
           <div class="plan__head"><span>🩺 評估 Assessment（可複製）</span><button class="plan__copy" id="b-assess-copy" type="button">複製</button></div>

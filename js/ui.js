@@ -4,7 +4,8 @@
   const $ = (id) => document.getElementById(id);
   const num = (id) => parseFloat($(id).value);
   const fmt = (v, d = 1) => (isFinite(v) ? v.toFixed(d) : '—');
-  let simCtx = null; // 存最近一次反算的個人化 PK，供自訂試算沿用
+  let simCtx = null;  // Mode 2：最近一次反算的個人化 PK，供自訂試算沿用
+  let bSimCtx = null; // Mode 3：最近一次 MAP 的個體 PK（二室），供自訂試算沿用
 
   // ---------- Tab 切換 ----------
   document.querySelectorAll('.tabs__btn').forEach((btn) => {
@@ -600,23 +601,30 @@
     w.push({ level: 'info', msg: '先驗模型：Goti 2018（住院成人）。重症病人先驗精度較低（Narayan 2021）；本估計須臨床覆核。' });
     renderWarnings($('b-warnings'), w);
 
-    // Plan（可複製）：僅行動，病人/濃度/PK/判讀見 Assessment
-    const pl = [
-      '【Vancomycin Bayesian 劑量 Plan】',
-      `現行 ${dose} mg q${tau}h（第 ${N} 劑）→ ${steadyState ? '' : '穩態投影 '}AUC24 ${fmt(auc, 0)}（${tag}）`,
-    ];
-    if (canRecommend) {
-      pl.push(`建議：${recDose} mg q${tau}h（${fmt(recDose * (24 / tau), 0)} mg/day）→ 預測 AUC ${fmt(recExp.auc24, 0)}、穩態峰/谷 ${fmt(recExp.peak, 1)}/${fmt(recExp.trough, 1)}`);
-    } else if (st === 'high') {
-      pl.push('⛔ AUC>600：不逕給劑量建議，結構化處置：');
-      SAFETY.auc600Management().forEach((s) => pl.push(`  · ${s}`));
-    } else if (dialysis) {
-      pl.push('血液透析：experimental，不輸出具體劑量建議（Goti 未建模透析清除）；劑量由臨床人員判斷。');
-    } else {
-      pl.push('暫不輸出劑量建議（詳見警示）。');
-    }
-    pl.push('監測：調整後 24–48h 複驗。須專業覆核。');
-    $('b-plan').textContent = pl.join('\n');
+    // 自訂試算：存 MAP 個體 PK + Plan 所需狀態
+    // gateReasons：canRecommend=false 的成因，可同時成立且須全部揭露——
+    // HD 病人 CL×0.7 常使 AUC 自然 >600，若只取最嚴重者，「Goti 未建模透析清除」
+    // 會恰在最該出現時被 AUC>600 蓋掉。
+    const gateReasons = canRecommend ? [] : [
+      st === 'high' && 'auc600',
+      dialysis && 'dialysis',
+      declare.declaredAKI && 'aki',
+    ].filter(Boolean);
+    if (!canRecommend && !gateReasons.length) gateReasons.push('other');
+    bSimCtx = {
+      pk: { cl: r.cl, vc: r.vc, vp: r.vp, q: r.q },
+      dose, tau, N, mic,
+      auc, tag, st, steadyState, canRecommend, gateReasons,
+      recDose, recExp,
+    };
+    planBCustom = null;
+    buildPlanB();
+    renderBSimCaveat();
+    // 預填：可建議時帶入建議方案，否則沿用現行方案（讓使用者從現況起改）
+    $('b-sim-dose').value = canRecommend ? recDose : dose;
+    $('b-sim-tau').value = tau;
+    $('b-sim-tinf').value = tInf;
+    $('b-sim-out').innerHTML = '';
 
     // 評估 Assessment（SOAP-A：臨床判讀）
     const sex = sexMale ? '男' : '女';
@@ -650,6 +658,91 @@
   });
   wireCopy('b-assess-copy', () => $('b-assess').textContent);
   wireCopy('b-copy', () => $('b-plan').textContent);
+
+  // Mode 3 Plan（可複製）：僅行動，病人/濃度/PK/判讀見 Assessment；含自訂選定方案
+  let planBCustom = null;
+  function buildPlanB() {
+    const s = bSimCtx; if (!s) return;
+    const pl = [
+      '【Vancomycin Bayesian 劑量 Plan】',
+      `現行 ${s.dose} mg q${s.tau}h（第 ${s.N} 劑）→ ${s.steadyState ? '' : '穩態投影 '}AUC24 ${fmt(s.auc, 0)}（${s.tag}）`,
+    ];
+    if (s.canRecommend) {
+      pl.push(`建議：${s.recDose} mg q${s.tau}h（${fmt(s.recDose * (24 / s.tau), 0)} mg/day）→ 預測 AUC ${fmt(s.recExp.auc24, 0)}、穩態峰/谷 ${fmt(s.recExp.peak, 1)}/${fmt(s.recExp.trough, 1)}`);
+    } else if (s.st === 'high') {
+      pl.push('⛔ AUC>600：不逕給劑量建議，結構化處置：');
+      SAFETY.auc600Management().forEach((x) => pl.push(`  · ${x}`));
+    } else if (s.gateReasons.includes('dialysis')) {
+      pl.push('血液透析：experimental，不輸出具體劑量建議（Goti 未建模透析清除）；劑量由臨床人員判斷。');
+    } else {
+      pl.push('暫不輸出劑量建議（詳見警示）。');
+    }
+    // AUC>600 已在上面走 auc600 分支；透析若同時成立，其警語不可被吞掉
+    if (s.st === 'high' && s.gateReasons.includes('dialysis')) {
+      pl.push('  ⚠️ 併血液透析：Goti 未建模透析清除／post-HD 回彈，上述 AUC 與下列投影本身即不可靠。');
+    }
+    if (planBCustom) {
+      const c = planBCustom;
+      pl.push(`★ 自訂選定：${c.dose} mg q${c.tau}h（輸注 ${c.tInf}h，${fmt(c.dailyMg, 0)} mg/day）→ 穩態峰/谷 ${fmt(c.peak, 1)}/${fmt(c.trough, 1)}、AUC24 ${fmt(c.auc24, 0)}（${c.tag}）`);
+      if (!s.canRecommend) pl.push(`   （自訂試算為使用者指定方案之模型投影，非本工具建議；${gateNotes(s.gateReasons)}）`);
+    }
+    pl.push('監測：調整後 24–48h 複驗。須專業覆核。');
+    $('b-plan').textContent = pl.join('\n');
+  }
+
+  // canRecommend=false 時，自訂試算仍照常投影（使用者主動指定的 what-if），但須標明其不可靠成因
+  const GATE_NOTE = {
+    auc600: 'AUC>600 須先處置高暴露，勿逕依試算減量',
+    dialysis: 'Goti 未建模透析清除／post-HD 回彈，投影不可靠',
+    aki: '腎功能不穩時 CL 非定值，穩態投影不可靠',
+    other: '本案安全閘門已擋下劑量建議',
+  };
+  const gateNotes = (rs) => (rs || []).map((r) => GATE_NOTE[r] || GATE_NOTE.other).join('；');
+  function renderBSimCaveat() {
+    const el = $('b-sim-caveat'); const s = bSimCtx;
+    if (!s || s.canRecommend) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = `⚠️ ${gateNotes(s.gateReasons)}。下方試算為「你指定方案」的模型投影，`
+      + '不等於本工具的劑量建議，須以重複濃度重新評估後再決定。';
+  }
+
+  // Mode 3 自訂方案試算：用 MAP 個體 PK 跑二室穩態模擬（非 Mode 2 的一室 first-order）
+  function renderBSim() {
+    if (!bSimCtx) return;
+    const dose = num('b-sim-dose'), tau = num('b-sim-tau'), tInf = num('b-sim-tinf');
+    if (!(dose > 0) || !(tau > 0) || !(tInf > 0)) {
+      $('b-sim-out').innerHTML = '<div class="alert alert--error"><span>⛔</span><span>請輸入有效的劑量、間隔與輸注時長（皆須 > 0）。</span></div>';
+      return;
+    }
+    if (tInf > tau) {
+      $('b-sim-out').innerHTML = '<div class="alert alert--error"><span>⛔</span><span>輸注時長不可超過給藥間隔（否則為持續輸注，本工具未涵蓋）。</span></div>';
+      return;
+    }
+    const e = BAYES.steadyStateExposure(dose, tau, tInf, bSimCtx.pk);
+    if (!isFinite(e.auc24) || !isFinite(e.peak) || !isFinite(e.trough)) {
+      $('b-sim-out').innerHTML = '<div class="alert alert--error"><span>⛔</span><span>模擬產生非有限值，無法輸出。請檢查輸入。</span></div>';
+      return;
+    }
+    const dailyMg = dose * (24 / tau);
+    const st = e.auc24 > VANCO.AUC_AKI_THRESHOLD ? 'high' : e.auc24 < VANCO.AUC_TARGET_MIN ? 'low' : 'ok';
+    const tag = st === 'ok' ? '達標' : st === 'low' ? '偏低' : '偏高';
+    $('b-sim-out').innerHTML =
+      '<div class="sim-result">' +
+      metric('穩態峰值 (輸注末)', fmt(e.peak, 1), 'mg/L') +
+      metric('穩態谷值 (間隔末)', fmt(e.trough, 1), 'mg/L') +
+      metric('AUC₂₄', fmt(e.auc24, 0), 'mg·h/L', true) +
+      metric('AUC/MIC', fmt(e.auc24 / bSimCtx.mic, 0), `MIC ${bSimCtx.mic}`) +
+      metric('日劑量', fmt(dailyMg, 0), 'mg') +
+      '</div>' +
+      `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
+      (dose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
+    planBCustom = { dose, tau, tInf, dailyMg, peak: e.peak, trough: e.trough, auc24: e.auc24, tag };
+    buildPlanB();
+  }
+  $('b-sim-calc') && $('b-sim-calc').addEventListener('click', renderBSim);
+  ['b-sim-dose', 'b-sim-tau', 'b-sim-tinf'].forEach((id) => {
+    $(id) && $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') renderBSim(); });
+  });
 
   // ---------- 顯示 / 錯誤 ----------
   function show(prefix) {
