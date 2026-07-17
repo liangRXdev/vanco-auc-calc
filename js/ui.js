@@ -81,6 +81,30 @@
   }
   function markError(ids, on) { ids.forEach((id) => $(id).classList.toggle('field__input--error', on)); }
 
+  // ---------- 輸注速率（給藥安全，三模式共用）----------
+  // 建議 10–15 mg/min（或 1g/60min），警示門檻另訂 >17 mg/min——兩者語意分離，
+  // 理由見 constants.js。不影響 AUC（=每日總量/CL），故一律以 muted 小提示呈現、
+  // 不升級為 alert、不擋劑量建議。
+  /** tInf 已知：逾警示門檻（>17 mg/min 或 <60min）時回傳提示文字，否則 null。 */
+  function infusionWarnText(dose, tInf) {
+    const v = SAFETY.checkInfusionRate(dose, tInf);
+    return v.messages.length ? v.messages[0].text : null;
+  }
+  /** 單一劑量的建議輸注時長字串：受 60min 下限夾住時退為單值。 */
+  function advisedInfText(dose) {
+    const [a, b] = SAFETY.advisedInfusionRangeH(dose);
+    return Math.abs(a - b) < 1e-9 ? `${fmt(a, 1)}h` : `${fmt(a, 1)}–${fmt(b, 1)}h`;
+  }
+  /** tInf 未知（Mode 1 不收此輸入）：陳述建議區間（10–15 mg/min）。caveat 為選填補述。 */
+  function infusionReqText(pairs, caveat) {
+    const xs = (pairs || []).filter((p) => p && isFinite(p.dose) && p.dose > 0);
+    if (!xs.length) return null;
+    return '建議輸注時長：' + xs.map((p) => `${p.label} ${p.dose} mg ${advisedInfText(p.dose)}`).join('、')
+      + '（10–15 mg/min，或 1g/60min）'
+      + (caveat ? `。${caveat}` : '');
+  }
+  const infusionHintHTML = (t) => (t ? `<p class="hint hint--muted">💧 ${esc(t)}</p>` : '');
+
   // ---------- Mode 1：經驗起始 ----------
   $('e-calc').addEventListener('click', () => {
     const ids = ['e-age', 'e-height', 'e-tbw', 'e-scr'];
@@ -120,7 +144,13 @@
       metric('建議維持 (圓整)', `${r.maintenanceDose} q${r.maintenanceInterval}h`, `＝${fmt(r.maintenanceDailyMg, 0)}/day`, true) +
       metric(`預測 AUC₂₄（目標 ${targetAuc}）`, fmt(r.predictedAuc24, 0), 'mg·h/L', true) +
       metric('預測峰 / 谷', `${fmt(r.predictedPeak, 1)} / ${fmt(r.predictedTrough, 1)}`, 'mg/L') +
-      (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : '');
+      (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : '') +
+      // Mode 1 不收 tInf，故僅陳述建議區間。上方峰/谷固定以 EMPIRIC_TINF_H 預測，
+      // 若實際依此建議延長輸注，真實峰值會略低於顯示值——如實揭露，不動已交叉驗證的算式。
+      infusionHintHTML(infusionReqText([
+        { label: '負荷', dose: icu ? r.loadingDose : 0 },
+        { label: '維持', dose: r.maintenanceDose },
+      ], `上列峰/谷預測固定假設輸注 ${VANCO.EMPIRIC_TINF_H}h；延長輸注後實際峰值略低、AUC 不變`));
     // 臨床聲明（無法自動偵測）+ 資料信心（經驗＝無實測濃度，本質 Moderate；AKI 降 Low）
     const declareE = {
       declaredAKI: $('e-aki').checked,
@@ -147,9 +177,9 @@
     // Plan（可複製）：僅行動，病人/腎功能/判讀見 Assessment
     const sex = document.querySelector('input[name="e-sex"]:checked').value === 'M' ? '男' : '女';
     const lines = [`【Vancomycin 起始劑量 Plan】${crass ? '（Crass 肥胖 CL 模型）' : ''}`];
-    if (icu) lines.push(`負荷：${r.loadingDose} mg IV（${crass ? 'Crass nomogram' : 'TBW'}）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
+    if (icu) lines.push(`負荷：${r.loadingDose} mg IV 輸注 ${advisedInfText(r.loadingDose)}（${crass ? 'Crass nomogram' : 'TBW'}）${r.loadingCapped ? '（已封頂 3000mg）' : ''}`);
     lines.push(
-      `維持：${r.maintenanceDose} mg IV q${r.maintenanceInterval}h（${fmt(r.maintenanceDailyMg, 0)} mg/day）→ 預測 AUC24 ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）、峰/谷 ${fmt(r.predictedPeak, 1)}/${fmt(r.predictedTrough, 1)}`,
+      `維持：${r.maintenanceDose} mg IV q${r.maintenanceInterval}h 輸注 ${advisedInfText(r.maintenanceDose)}（${fmt(r.maintenanceDailyMg, 0)} mg/day）→ 預測 AUC24 ≈ ${fmt(r.predictedAuc24, 0)}（目標 ${targetAuc}）、峰/谷 ${fmt(r.predictedPeak, 1)}/${fmt(r.predictedTrough, 1)}`,
       '監測：24–48h 內採雙點濃度驗證 AUC 後調整。',
       '本工具僅供輔助，須專業覆核。'
     );
@@ -234,7 +264,8 @@
       metric('ke', fmt(r.ke, 4), '/h') +
       metric('半衰期 t½', fmt(r.halfLife, 1), 'h') +
       metric('Vd', fmt(r.vd, 1), 'L') +
-      metric('清除率 CL', fmt(r.cl, 2), 'L/h');
+      metric('清除率 CL', fmt(r.cl, 2), 'L/h') +
+      infusionHintHTML(infusionWarnText(input.dose, input.tInf));
 
     // 間隔劑量表（AUC 由每日總量決定、各間隔相同；差異在峰/谷。標記與輸入 τ 相同的列）
     const rows = r.intervalOptions.map((o) => {
@@ -386,6 +417,7 @@
     if (planACustom) {
       const c = planACustom;
       pl.push(`★ 自訂選定：${c.dose} mg q${c.tau}h（${fmt(c.dailyMg, 0)} mg/day）→ 峰/谷 ${fmt(c.peak, 1)}/${fmt(c.trough, 1)}、AUC24 ${fmt(c.auc24, 0)}（${c.tag}）`);
+      if (c.rateWarn) pl.push(`   💧 輸注速率過快：${c.dose} mg 建議輸注 ${advisedInfText(c.dose)}（10–15 mg/min，或 1g/60min）。`);
     }
     pl.push('複驗：調整後 24–48h。Sawchuk-Zaske first-order；須專業覆核。');
     $('a-plan').textContent = pl.join('\n');
@@ -411,9 +443,14 @@
       metric('日劑量', fmt(s.dailyMg, 0), 'mg') +
       '</div>' +
       `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
-      (s.impractical ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
+      (s.impractical ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '') +
+      infusionHintHTML(infusionWarnText(dose, simCtx.tInf));
     // 帶入 Plan：自訂選定方案
-    planACustom = { dose, tau, dailyMg: s.dailyMg, peak: s.peak, trough: s.trough, auc24: s.auc24, tag };
+    const rateTxt = infusionWarnText(dose, simCtx.tInf);
+    planACustom = {
+      dose, tau, dailyMg: s.dailyMg, peak: s.peak, trough: s.trough, auc24: s.auc24, tag,
+      rateWarn: !!rateTxt,
+    };
     buildPlanA();
   }
   $('sim-calc').addEventListener('click', renderSim);
@@ -559,7 +596,8 @@
       metric('先驗 CL → 個體', `${fmt(r.prior.cl, 2)} → ${fmt(r.cl, 2)}`, `η ${shrink(r.eta.cl)}`) +
       metric('中央室 Vc', fmt(r.vc, 1), 'L') +
       metric('周邊室 Vp', fmt(r.vp, 1), 'L') +
-      metric('穩態分布體積 Vss', fmt(r.vss, 1), 'L');
+      metric('穩態分布體積 Vss', fmt(r.vss, 1), 'L') +
+      infusionHintHTML(infusionWarnText(dose, tInf)); // 現行方案（與 Mode 2 的 a-pk 同位置）
 
     // 擬合檢核
     const fitRows = r.predictedAtObs.map((p, i) => {
@@ -578,10 +616,12 @@
     $('b-rec-tau').textContent = tau;
     const impractical = recDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX;
     if (canRecommend) {
+      // 建議劑量沿用現行 tInf；若該組合超速，於此標示所需最短輸注時長
       $('b-rec').innerHTML =
         metric('建議劑量', `${recDose}${impractical ? '⚠' : ''} q${tau}h`, `＝${fmt(recDose * (24 / tau), 0)}/day`, true) +
         metric(`達目標 AUC ${targetAuc}`, fmt(recExp.auc24, 0), 'mg·h/L', true) +
-        metric('穩態預測峰 / 谷', `${fmt(recExp.peak, 1)} / ${fmt(recExp.trough, 1)}`, 'mg/L');
+        metric('穩態預測峰 / 谷', `${fmt(recExp.peak, 1)} / ${fmt(recExp.trough, 1)}`, 'mg/L') +
+        infusionHintHTML(infusionWarnText(recDose, tInf));
     } else if (st === 'high') {
       $('b-rec').innerHTML = managementCardHTML('AUC₂₄ > 600：先處置高暴露，暫不輸出劑量建議');
     } else if (dialysis) {
@@ -684,7 +724,7 @@
     if (planBCustom) {
       const c = planBCustom;
       pl.push(`★ 自訂選定：${c.dose} mg q${c.tau}h（輸注 ${c.tInf}h，${fmt(c.dailyMg, 0)} mg/day）→ 穩態峰/谷 ${fmt(c.peak, 1)}/${fmt(c.trough, 1)}、AUC24 ${fmt(c.auc24, 0)}（${c.tag}）`);
-      if (c.rateWarn) pl.push(`   ⚠️ 輸注速率過快：${c.dose} mg 至少需輸注 ${fmt(c.rateWarn, 1)}h（最短 60 min 與 ≤10 mg/min 取長）。`);
+      if (c.rateWarn) pl.push(`   💧 輸注速率過快：${c.dose} mg 建議輸注 ${advisedInfText(c.dose)}（10–15 mg/min，或 1g/60min）。`);
       if (!s.canRecommend) pl.push(`   （自訂試算為使用者指定方案之模型投影，非本工具建議；${gateNotes(s.gateReasons)}）`);
     }
     pl.push('監測：調整後 24–48h 複驗。須專業覆核。');
@@ -737,15 +777,12 @@
       '</div>' +
       `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
       (dose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
-    // 輸注速率警示（給藥安全；不影響上列 AUC，故另以 alert 呈現、不混入 AUC badge）
-    const rateV = SAFETY.checkInfusionRate(dose, tInf);
-    if (rateV.messages.length) {
-      $('b-sim-out').insertAdjacentHTML('beforeend',
-        `<div class="alert alert--warn" style="margin-top:.5rem"><span>⚠️</span><span>${esc(rateV.messages[0].text)}</span></div>`);
-    }
+    // 輸注速率小提示（給藥安全；不影響上列 AUC，故不混入 AUC badge、不升級為 alert）
+    const rateTxt = infusionWarnText(dose, tInf);
+    $('b-sim-out').insertAdjacentHTML('beforeend', infusionHintHTML(rateTxt));
     planBCustom = {
       dose, tau, tInf, dailyMg, peak: e.peak, trough: e.trough, auc24: e.auc24, tag,
-      rateWarn: rateV.messages.length ? SAFETY.requiredInfusionTimeH(dose) : null,
+      rateWarn: !!rateTxt,
     };
     buildPlanB();
   }

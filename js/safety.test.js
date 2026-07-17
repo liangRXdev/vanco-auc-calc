@@ -133,28 +133,41 @@ c('C26d', v.confidence === 'Moderate' && has(v, 'DQ_EMPIRIC'), 'Mode 1 經驗（
 
 // ─────────── B4 輸注速率 ───────────
 console.log('\n--- 輸注速率 ---');
-// 必要輸注時長 = max(60 min, dose÷10 mg/min)：兩條規則的交界在 600 mg
-c('C30a', Math.abs(S.requiredInfusionTimeH(500) - 1) < 1e-9, '500mg → 60min 規則主導（1.0h）');
-c('C30b', Math.abs(S.requiredInfusionTimeH(600) - 1) < 1e-9, '600mg → 兩規則交界恰為 1.0h');
-c('C30c', Math.abs(S.requiredInfusionTimeH(1000) - 1.6667) < 1e-3, '1000mg → 速率規則主導（≈1.67h）');
-c('C30d', Math.abs(S.requiredInfusionTimeH(2000) - 3.3333) < 1e-3, '2000mg → ≈3.33h');
+// 警示門檻 = max(60 min, dose÷17 mg/min)；建議區間 = 10–15 mg/min（且 ≥60 min）
+c('C30a', Math.abs(S.requiredInfusionTimeH(500) - 1) < 1e-9, '500mg → 60min 下限主導（1.0h）');
+c('C30b', Math.abs(S.requiredInfusionTimeH(1020) - 1) < 1e-9, '1020mg → 60min 與 17mg/min 交界恰 1.0h');
+c('C30c', Math.abs(S.requiredInfusionTimeH(1500) - 1.4706) < 1e-3, '1500mg → 速率門檻主導（≈1.47h）');
+c('C30d', Math.abs(S.requiredInfusionTimeH(2000) - 1.9608) < 1e-3, '2000mg → ≈1.96h');
 
+// 選 17 的理由：1g/60min＝16.7 mg/min 為普遍實務且多數來源接受，不得誤報
 v = S.checkInfusionRate(1000, 1);
-c('C31a', v.status === 'WARNING' && has(v, 'INFUSION_RATE_HIGH'), '1000mg/1h（16.7 mg/min）→ 警示');
-c('C31b', v.allowCalculation && v.allowDoseRecommendation && v.confidence === 'High',
+c('C31a', v.status === 'OK' && !v.messages.length,
+  '1000mg/1h（16.7 mg/min）→ 不警示（17 刻意高於此普遍實務）');
+
+v = S.checkInfusionRate(1000, 0.5);
+c('C31b', v.status === 'WARNING' && has(v, 'INFUSION_RATE_HIGH'), '1000mg/0.5h（33 mg/min）→ 警示');
+c('C31c', v.allowCalculation && v.allowDoseRecommendation && v.confidence === 'High',
   '速率警示屬給藥安全 → 不擋計算/建議、不降信心');
 
-v = S.checkInfusionRate(1000, 2);
-c('C32', v.status === 'OK' && !v.messages.length, '1000mg/2h（8.3 mg/min）→ 無警示');
+v = S.checkInfusionRate(1500, 1);
+c('C32', v.status === 'WARNING', '1500mg/1h（25 mg/min）→ 警示');
 
-v = S.checkInfusionRate(500, 1);
-c('C33', v.status === 'OK' && !v.messages.length, '500mg/1h（8.3 mg/min，滿足 60min）→ 無警示');
+v = S.checkInfusionRate(1500, 1.5);
+c('C33', v.status === 'OK', '1500mg/1.5h（16.7 mg/min）→ 不警示');
 
 v = S.checkInfusionRate(500, 0.5);
-c('C34', v.status === 'WARNING', '500mg/0.5h → 速率合格但違反最短 60min → 仍警示');
+c('C34', v.status === 'WARNING', '500mg/0.5h（16.7 mg/min）→ 速率未逾閾值但違反 60min → 仍警示');
 
-v = S.checkInfusionRate(1000, 1.6667);
-c('C35', v.status === 'OK', '恰達必要時長（浮點邊界）→ 無警示');
+v = S.checkInfusionRate(1500, 1.4706);
+c('C35', v.status === 'OK', '恰達警示門檻（浮點邊界）→ 無警示');
+
+// 建議區間（10–15 mg/min）與警示門檻（17）為不同概念，不可混用
+let a = S.advisedInfusionRangeH(1000);
+c('C35a', Math.abs(a[0] - 1.111) < 1e-2 && Math.abs(a[1] - 1.667) < 1e-2, '1000mg 建議 1.1–1.7h');
+a = S.advisedInfusionRangeH(500);
+c('C35b', Math.abs(a[0] - 1) < 1e-9 && Math.abs(a[1] - 1) < 1e-9, '500mg 建議受 60min 下限夾住 → 1.0–1.0h');
+c('C35c', S.advisedInfusionRangeH(1000)[0] > S.requiredInfusionTimeH(1000),
+  '建議下限嚴於警示門檻（建議 1.1h > 警示門檻 1.0h）→ 兩者語意分離');
 
 v = S.checkInfusionRate(NaN, 1);
 c('C36a', v.status === 'OK' && !v.messages.length, 'dose 非有限 → 空 verdict（交呼叫端驗證）');

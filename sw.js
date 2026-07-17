@@ -3,7 +3,7 @@
  * Google Fonts 為跨源，不攔截；離線時自動退回系統字型，計算功能不受影響。
  * 版本更新：改動 shell 檔案後，將 CACHE 版本號 +1 以汰換舊快取。
  */
-const CACHE = 'vanco-auc-calc-v3';
+const CACHE = 'vanco-auc-calc-v6';
 const SHELL = [
   './',
   'index.html',
