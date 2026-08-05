@@ -136,9 +136,12 @@
       confidence = lowerConf(confidence, 'Moderate');
     }
     if (i.declaredUnreliableSampleTiming) {
+      // AUC 估計本身即建立在採血時刻上；時刻不可信時，由該 AUC 外推的新劑量同樣不可信。
+      // 故不只降信心，一併封鎖劑量建議（量測值仍可顯示，但不得外推為醫囑）。
       m.push(msg('E_SAMPLE_TIMING', 'warn',
-        '已聲明採血時間不可靠：AUC 估計標為不可信，請重新確認採血時刻。'));
+        '已聲明採血時間不可靠：AUC 估計標為不可信，不產生劑量建議；請重新確認採血時刻後再計算。'));
       confidence = lowerConf(confidence, 'Moderate');
+      allowDoseRecommendation = false;
     }
     if (i.pregnant) {
       m.push(msg('E_PREGNANT', 'warn',
