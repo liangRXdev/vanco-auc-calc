@@ -27,10 +27,12 @@
   });
 
   // ---------- 小工具 ----------
+  // 一律 esc()：目前三個輸入來源都是 parseFloat 後的 number、無外部資料源，
+  // 但這是唯一會把值插進 innerHTML 的通道，統一逸出成本近零、日後接外部資料才不會漏。
   function metric(label, value, unit, primary) {
     return `<div class="metric${primary ? ' metric--primary' : ''}">
-      <div class="metric__label">${label}</div>
-      <div class="metric__value">${value}<span class="metric__unit">${unit || ''}</span></div>
+      <div class="metric__label">${esc(label)}</div>
+      <div class="metric__value">${esc(value)}<span class="metric__unit">${esc(unit || '')}</span></div>
     </div>`;
   }
   function esc(s) {
@@ -96,6 +98,7 @@
           ? `<div class="summary__line">負荷劑量：${r.loading.dose} mg`
             + `${r.loading.capped ? '（已封頂 3000 mg）' : ''}</div>` : '')
         + (r.impractical ? '<div class="summary__note">⚠ 單次劑量偏大，可考慮縮短間隔。</div>' : '')
+        + (r.caveat ? `<div class="summary__caveat">⚠ ${esc(r.caveat)}</div>` : '')
         + '<div class="summary__label" style="margin-top:.6rem">預估（模型預測，非醫囑）</div>'
         + `<div class="summary__line">預估 AUC24：${fmt(r.auc24, 0)} mg·h/L</div>`
         + `<div class="summary__line">預估 peak／trough：${fmt(r.peak, 1)}／${fmt(r.trough, 1)} mg/L</div>`
@@ -408,8 +411,7 @@
       return;
     }
     const s = PK.simulateRegimen(dose, tau, simCtx.tInf, simCtx.ke, simCtx.vd, simCtx.cl, simCtx.mic);
-    const st = s.auc24 > VANCO.AUC_AKI_THRESHOLD ? 'high' : s.auc24 < VANCO.AUC_TARGET_MIN ? 'low' : 'ok';
-    const tag = st === 'ok' ? '達標' : st === 'low' ? '偏低' : '偏高';
+    const st = SUMMARY.classifyDisplay(s.auc24), tag = SUMMARY.displayTag(s.auc24);
     $('sim-out').innerHTML =
       '<div class="sim-result">' +
       metric('預測峰值', fmt(s.peak, 1), 'mg/L') +
@@ -418,7 +420,7 @@
       metric('AUC/MIC', fmt(s.aucOverMic, 0), '') +
       metric('日劑量', fmt(s.dailyMg, 0), 'mg') +
       '</div>' +
-      `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
+      `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 ${VANCO.AUC_TARGET_MIN}–${VANCO.AUC_TARGET_MAX}）</span>` +
       (s.impractical ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '') +
       infusionHintHTML(infusionWarnText(dose, simCtx.tInf));
     // 帶入 Plan：自訂選定方案
@@ -664,8 +666,7 @@
       return;
     }
     const dailyMg = dose * (24 / tau);
-    const st = e.auc24 > VANCO.AUC_AKI_THRESHOLD ? 'high' : e.auc24 < VANCO.AUC_TARGET_MIN ? 'low' : 'ok';
-    const tag = st === 'ok' ? '達標' : st === 'low' ? '偏低' : '偏高';
+    const st = SUMMARY.classifyDisplay(e.auc24), tag = SUMMARY.displayTag(e.auc24);
     $('b-sim-out').innerHTML =
       '<div class="sim-result">' +
       metric('穩態峰值 (輸注末)', fmt(e.peak, 1), 'mg/L') +
@@ -674,7 +675,7 @@
       metric('AUC/MIC', fmt(e.auc24 / bSimCtx.mic, 0), `MIC ${bSimCtx.mic}`) +
       metric('日劑量', fmt(dailyMg, 0), 'mg') +
       '</div>' +
-      `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 400–600）</span>` +
+      `<span class="sim-badge sim-badge--${st}">AUC ${tag}（目標 ${VANCO.AUC_TARGET_MIN}–${VANCO.AUC_TARGET_MAX}）</span>` +
       (dose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX ? ' <span class="sim-badge sim-badge--high">⚠ 單次劑量過大</span>' : '');
     // 輸注速率小提示（給藥安全；不影響上列 AUC，故不混入 AUC badge、不升級為 alert）
     $('b-sim-out').insertAdjacentHTML('beforeend', infusionHintHTML(infusionWarnText(dose, tInf)));

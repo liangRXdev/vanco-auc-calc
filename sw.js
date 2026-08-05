@@ -3,7 +3,7 @@
  * Google Fonts 為跨源，不攔截；離線時自動退回系統字型，計算功能不受影響。
  * 版本更新：改動 shell 檔案後，將 CACHE 版本號 +1 以汰換舊快取。
  */
-const CACHE = 'vanco-auc-calc-v8';
+const CACHE = 'vanco-auc-calc-v9';
 const SHELL = [
   './',
   'index.html',
@@ -51,7 +51,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 其餘同源靜態資源（CSS/JS/圖示/manifest）：cache-first，背景補網
+  // 其餘同源靜態資源（CSS/JS/圖示/manifest）：純 cache-first，**不做背景補網**。
+  // 汰換一律靠 CACHE 版本號 +1（install 時 addAll 全量重抓）——
+  // 若在此背景更新單一檔案，會出現「新 ui.js 配舊 summary.js」的混版，比舊版整組更危險。
   event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
 });
 

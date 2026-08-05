@@ -76,9 +76,25 @@ Codex 未提出任何與零建置／無框架／無 DOM 測試環境等架構限
 | CR-6 | 移除「量測 AUC₂₄ 本身仍有效」——與 `E_SAMPLE_TIMING` 訊息互斥；改為中性敘述「照原樣顯示，可靠度以成因為準」 | `ui.js` Mode 2 caveat |
 | TG-4 | `technical.formula` 改由 view-model 產生，第三層 DOM 與「複製完整 PK 報告」共用同一份字串，死分支消除 | `viewmodel.js`｜V19–V20、瀏覽器實測 |
 
-**測試**：173 → 222（summary 42→57、新增 viewmodel 34）。全綠，golden-master 逐位相同（`748.675049`）。
-**變異驗證**：summary 6 條、view-model 8 條全數轉紅（V29 首輪為恆真斷言、未轉紅，已改為跨門檻兩側比對後轉紅）。
-**未處理**：CR-4／CR-7／CR-8／CR-9／TG-2／TG-3／TG-5／TG-8／TG-9／DA-1／DA-2（Medium 以下，留待批次）。
+### 第二批（Medium／Low 群）
+
+| 項目 | 處置 | 落點 |
+|---|---|---|
+| CR-7 | 新增 `recommendation.caveat`：仍給建議時取排序最高的一項緊鄰建議（畫面 `.summary__caveat`、Plan 以 `※` 起首），該項不再重複列進限制區 | `summary.js`、`ui.js`、`style.css`｜S26／S26b／S40／S42／S54 |
+| TG-2 | S09 改注入 provider：替換 `S.auc600Management` 後摘要與 Plan 須同步改變 | `summary.test.js`｜S09 |
+| CR-4／TG-3 | `blockCases` 6 → 16 例，涵蓋所有 `GATE_LABEL` 碼；另加 S24b（block 級訊息皆須有對映，防新碼靜默消失）與 S24c（`GATE_LABEL` 每個碼都有案例覆蓋，防表項腐化）。未改安全層回傳契約 | `summary.test.js` |
+| TG-8 | AUC 邊界：400／600 皆屬達標（包含性）、399.6／600.4 翻面、NaN 走資料不足且不吐 NaN 到畫面 | S43–S47 |
+| TG-9 | Mode 1 摘要補 7 例（起始 vs 調整、無現行方案、負荷有無／封頂、信心與監測、AUC 標為預估、AKI caveat） | S48–S54 |
+| TG-5 | S39 改驗「醫囑格式 regimen 與模型預測數值不同行、預估行不帶 `Vancomycin`」，把兩者併成一行即轉紅 | `summary.test.js`｜S39 |
+| CR-8 | `metric()` 三個插值點統一 `esc()` | `ui.js` |
+| CR-9 | 兩處 what-if badge 改用 `SUMMARY.classifyDisplay()`／`displayTag()`，目標區間改引用 `VANCO` 常數；函式註解明寫「非閘門」 | `ui.js`、`summary.js`｜S70／S71 |
+| DA-2 | `sw.js` 註解與實作對齊：純 cache-first、不做背景補網，汰換靠版本號（背景補單檔會造成混版） | `sw.js` |
+| SP-1 | **375px 版面已量測**（同源 iframe 375×812，實測視埠 375）：三模式皆無頁面級橫向捲動；寬表格於 `.table-scroll`（`overflow-x:auto`）內自行捲動。發現複製鈕高 38px 低於觸控目標，已加 `@media(max-width:560px){.btn--copy{min-height:44px}}`，複測 44px | `style.css` |
+
+**測試**：173 → 239（summary 42→74、新增 viewmodel 34）。全綠，golden-master 逐位相同（`748.675049`）。
+**變異驗證**：summary 6 條、view-model 8 條、第二批 10 條全數轉紅。兩次假綠已修正——V29（恆真斷言，改為跨門檻兩側比對）、Mode 2／Mode 3 fixture（建議劑量恰等於現行劑量，互換暴露量測不出來，改用暴露不足的案例）。
+**未處理**：DA-1（Google Fonts 跨源，屬既有設計取捨，`sw.js` 註解與 README 均已揭露）。
+Service Worker CACHE v7 → v9（v8 新增 `summary.js`／`viewmodel.js`，v9 為 CSS 變更）。
 
 ## 邊界聲明
 

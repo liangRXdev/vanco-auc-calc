@@ -73,6 +73,7 @@ GitHub 調研顯示，目前較少見以繁體中文臨床藥師工作流程為�
 - **「建議」與「預估」分標籤**，避免模型預測被讀成醫囑。
 - 摘要不自行判讀安全性：可否給劑量建議一律讀 `safety.allowDoseRecommendation`；AUC 判讀取 safety 的 `AUC_OK/LOW/HIGH` 訊息碼；AUC>600 的結構化處置直接取 `SAFETY.auc600Management()`。
 - **BLOCK 時**（AKI／HD／AUC>600／採血時間不可靠／Bayesian 擬合失敗／小兒／CRRT）摘要與臨床簡版**不含任何具體新劑量**，改列成因與下一步；量測 AUC、現行方案照常顯示。Mode 2 的間隔劑量表改標「外推參考（本案不可直接採用）」。
+- **WARNING 時建議旁有單一 caveat**：取排序最高的一項緊鄰建議（`recommendation.caveat`），該項即不再重複列進「主要限制」——同一句話在一屏出現兩次只會讓人整區跳過。
 - **自訂試算（what-if）**：BLOCK 時 `複製臨床摘要` 只留「曾執行自訂試算、因安全閘門未納入」與成因，**不帶劑量、間隔或預估暴露量**；`複製完整 PK 報告` 保留數值供覆核並標明不可靠。分版規則寫在 `SUMMARY.customSimulationNote()`，UI 不得自行拼接。
 - **計算失敗時第一屏不留白**：輸入不合法、雙點反算失敗、Bayesian 未收斂皆改走 `SUMMARY.buildFatalSummary()`，於第一層列出原因與明確下一步（第四層 `<details>` 預設收合，只寫進去等於什麼都沒顯示）。
 - **安全邊界 fail-closed**：`buildClinicalSummary()` 未拿到完整 verdict（缺 `allowCalculation` / `allowDoseRecommendation`）時一律視為不可計算、不出劑量建議。
@@ -104,7 +105,7 @@ vanco-auc-calc/
 │   ├── safety.js           # 確定性安全層（eligibility / 濃度守衛 / 擬合守衛 / AUC 分級）
 │   ├── safety.test.js      # 安全行為 C-cases（51/51）
 │   ├── summary.js          # 臨床摘要組裝（純函式：摘要 / 臨床簡版 Plan / 技術完整版）
-│   ├── summary.test.js     # 摘要分層行為 S-cases（57/57）
+│   ├── summary.test.js     # 摘要分層行為 S-cases（74/74）
 │   ├── viewmodel.js        # PK 結果 → 摘要契約的攤平（純函式，三模式各一）
 │   ├── viewmodel.test.js   # 攤平正確性 V-cases（34/34；以真實 PK/BAYES 回傳為輸入）
 │   └── ui.js               # DOM 綁定與渲染
@@ -119,7 +120,7 @@ vanco-auc-calc/
 node js/pk.test.js           # Mode 1/2（一室、Sawchuk-Zaske、Crass 肥胖）    28/28
 node js/bayes.test.js        # Mode 3（收斂旗標、NaN 守衛、穩態 AUC）        31/31
 node js/safety.test.js       # 安全層行為（BLOCK/WARNING 觸發正確性、輸注速率）51/51
-node js/summary.test.js      # 臨床摘要分層（判讀/閘門/兩版文字/格式）        57/57
+node js/summary.test.js      # 臨床摘要分層（判讀/閘門/兩版文字/格式/邊界）    74/74
 node js/viewmodel.test.js    # PK 結果 → 摘要契約的攤平（三模式）            34/34
 node js/bayes.golden.test.js # golden-master 回歸基準                        21/21
 node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估計（N=1000）

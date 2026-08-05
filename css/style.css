@@ -201,6 +201,13 @@ body {
 .summary__auc-unit { font-family: var(--font-body); font-size: .8rem; color: var(--color-text-muted); margin-left: .35rem; }
 .summary__list { margin: .3rem 0 0 1.1rem; padding: 0; font-size: .9rem; line-height: 1.65; color: var(--color-text-body); }
 .summary__note { font-size: .8rem; color: var(--color-text-muted); margin-top: .3rem; }
+/* 建議旁的單一 caveat（§四.2）：要看得見但不搶過建議本身，故用琥珀左框而非整塊紅底 */
+.summary__caveat {
+  font-size: .85rem; line-height: 1.55; color: var(--color-text-body);
+  margin-top: .5rem; padding: .4rem .6rem;
+  border-left: 3px solid var(--color-amber); background: var(--color-amber-bg);
+  border-radius: 0 4px 4px 0;
+}
 
 /* 複製動作列 */
 .copy-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
@@ -297,4 +304,6 @@ body {
   .header__title { font-size: 1.05rem; }
   .header__formula { font-size: 1.5rem; }
   .tabs__btn { font-size: .9rem; }
+  /* 375px 實測：複製鈕原高 38px，低於觸控目標建議值；病房多為手機操作 */
+  .btn--copy { min-height: 44px; }
 }

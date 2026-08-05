@@ -134,8 +134,8 @@
     return (first.length > 70 ? first.slice(0, 70) + '…' : first) + '。';
   }
 
-  /** 摘要用限制：只取 block/warn、去重、依 LIMIT_ORDER 排序、最多 3 條（§三.E）。 */
-  function pickLimitations(sf) {
+  /** 只取 block/warn、去重、依 LIMIT_ORDER 排序。caveat 與限制區都由此清單切出。 */
+  function sortedIssues(sf) {
     const seen = new Set();
     const picked = [];
     for (const m of (sf.messages || [])) {
@@ -148,7 +148,7 @@
       const ia = LIMIT_ORDER.indexOf(a.code), ib = LIMIT_ORDER.indexOf(b.code);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
-    return picked.slice(0, MAX_LIMITATIONS).map(shortText);
+    return picked;
   }
 
   /** 閘門關閉時的成因清單。可同時成立者全部列出（例：HD + AUC>600）。 */
@@ -221,6 +221,13 @@
       kind = 'adjust'; regimen = r.recommend; exposure = r.recommend;
     }
 
+    // §四.2：仍給建議時，建議旁須有**單一**明確 caveat。取排序最高的一項緊鄰建議，
+    // 該項即不再重複列進限制區——同一句話在一屏出現兩次，只會讓人整區跳過（§八.3）。
+    const issues = sortedIssues(sf);
+    const caveat = (canRecommend && issues.length) ? shortText(issues[0]) : null;
+    const limitations = (caveat ? issues.slice(1) : issues)
+      .slice(0, MAX_LIMITATIONS).map(shortText);
+
     const headline = kind === 'none' ? BLOCKED_LABEL
       : kind === 'start' ? `建議起始 ${regimenText(regimen)}`
       : kind === 'maintain' ? `建議維持現行 ${regimenText(regimen)}`
@@ -267,10 +274,11 @@
         peak: exposure ? exposure.peak : NaN,
         trough: exposure ? exposure.trough : NaN,
         impractical: !!(regimen && regimen.impractical),
+        caveat,
       },
       blockedReasons: canRecommend ? [] : gateReasons(sf),
       monitoring: monitoringLines(mode, canRecommend, sf),
-      limitations: pickLimitations(sf),
+      limitations,
       // AUC>600 時的結構化處置直接取自 safety 層，不另寫一份
       managementSteps: has(sf, 'AUC_HIGH') ? SF.auc600Management() : [],
       alternatives: r.alternatives || [],
@@ -301,7 +309,7 @@
       recommendation: {
         kind: 'none', headline: BLOCKED_LABEL, regimen: null,
         regimenText: '—', regimenChartText: '—', loading: null,
-        auc24: NaN, peak: NaN, trough: NaN, impractical: false,
+        auc24: NaN, peak: NaN, trough: NaN, impractical: false, caveat: null,
       },
       blockedReasons: rs.length ? rs : ['輸入資料無法完成計算'],
       monitoring: ns.length ? ns : ['請修正上列問題後重新計算。'],
@@ -386,6 +394,8 @@
       L.push(`預估 AUC24 ${n0(s.recommendation.auc24)} mg·h/L，`
         + `peak ${n1(s.recommendation.peak)} mg/L，trough ${n1(s.recommendation.trough)} mg/L。`);
       if (s.recommendation.impractical) L.push('註：單次劑量偏大，可考慮縮短間隔。');
+      // §十.9：WARNING 的 caveat 必須同時出現在摘要與臨床簡版，且緊鄰建議而非埋在文末。
+      if (s.recommendation.caveat) L.push(`※ ${s.recommendation.caveat}`);
     }
     L.push('');
 
@@ -472,6 +482,10 @@
     buildClinicalSummary, buildClinicalPlan, buildTechnicalReport,
     buildFatalSummary, customSimulationNote, appendCustomSimulation,
     regimenText, regimenChartText, targetRangeText,
+    // 顯示用分級：供自訂試算的 what-if badge 使用。**不是閘門**——
+    // 是否可給劑量建議一律讀 safety verdict，此處只決定 badge 顏色與字樣。
+    classifyDisplay: classifyLocal,
+    displayTag: (auc) => ({ ok: '達標', low: '偏低', high: '偏高', insufficient: '無法判讀' }[classifyLocal(auc)]),
     // 供測試檢視
     _internal: { GATE_LABEL, SHORT, LIMIT_ORDER, MAX_LIMITATIONS },
   };
