@@ -9,6 +9,16 @@
   // 兩種可複製版本（§六）：臨床簡版為預設複製內容，技術完整版另按鈕
   const planText = { e: '', a: '', b: '' };
   const techText = { e: '', a: '', b: '' };
+  // 第二層（替代方案／外推參考）另有一份可複製文字，與臨床簡版分開，
+  // 按鈕名稱亦隨閘門狀態改變——不能讓外推值混進「複製臨床摘要」。
+  const altText = { a: '', b: '' };
+  /** 依閘門狀態更新第二層複製鈕的顯示與名稱。 */
+  function syncAltCopy(prefix, blocked) {
+    const btn = $(prefix + '-copy-alt');
+    if (!btn) return;                      // Mode 1 無第二層
+    btn.hidden = !altText[prefix];
+    btn.textContent = blocked ? '複製外推參考（不可直接採用）' : '複製替代方案';
+  }
 
   // ---------- Tab 切換 ----------
   document.querySelectorAll('.tabs__btn').forEach((btn) => {
@@ -381,6 +391,7 @@
   });
   wireCopy('a-copy-clinical', () => planText.a);
   wireCopy('a-copy-tech', () => techText.a);
+  wireCopy('a-copy-alt', () => altText.a);
 
   // Mode 2 兩版可複製文字。自訂選定方案只補在文末附註，不改動摘要的主要推薦
   // （避免使用者的 what-if 被誤讀為系統建議）。附註的分版規則見 SUMMARY.customSimulationNote：
@@ -393,6 +404,8 @@
       SUMMARY.buildClinicalPlan(sum), planACustom, sum, 'clinical');
     techText.a = SUMMARY.appendCustomSimulation(
       SUMMARY.buildTechnicalReport(s.view, s.safety, 2), planACustom, sum, 'technical');
+    altText.a = SUMMARY.buildExtrapolationSummary(sum, planACustom);
+    syncAltCopy('a', sum.blocked);
     $('a-tech').textContent = techText.a;
   }
   /** 輸注速率過快時的附註文字（給藥安全，與 AUC 無關）。 */
@@ -471,6 +484,7 @@
     $('b-pk').innerHTML = ''; $('b-fit').innerHTML = '';
     $('b-formula').innerHTML = ''; $('b-tech').textContent = ''; $('b-infusion').innerHTML = '';
     planText.b = ''; techText.b = '';
+    altText.b = ''; syncAltCopy('b', true);
     renderSummary($('b-summary'), SUMMARY.buildFatalSummary(msgs, steps, 3));
     renderWarnings($('b-warnings'), msgs.map((m) => ({ level: 'error', msg: m })));
     show('b');
@@ -617,6 +631,7 @@
   });
   wireCopy('b-copy-clinical', () => planText.b);
   wireCopy('b-copy-tech', () => techText.b);
+  wireCopy('b-copy-alt', () => altText.b);
 
   // Mode 3 兩版可複製文字；自訂試算只作為附註補在文末
   let planBCustom = null;
@@ -627,6 +642,8 @@
       SUMMARY.buildClinicalPlan(sum), planBCustom, sum, 'clinical');
     techText.b = SUMMARY.appendCustomSimulation(
       SUMMARY.buildTechnicalReport(s.view, s.safety, 3), planBCustom, sum, 'technical');
+    altText.b = SUMMARY.buildExtrapolationSummary(sum, planBCustom);
+    syncAltCopy('b', sum.blocked);
     $('b-tech').textContent = techText.b;
   }
 
@@ -703,6 +720,7 @@
     $(prefix + '-tech').textContent = '';
     $(prefix + '-infusion').innerHTML = '';
     planText[prefix] = ''; techText[prefix] = '';
+    altText[prefix] = ''; syncAltCopy(prefix, true);
     if (prefix === 'e') { $('e-output').innerHTML = ''; }
     else { $('a-pk').innerHTML = ''; $('a-table').innerHTML = ''; $('a-formula').innerHTML = ''; }
     renderSummary($(prefix + '-summary'),

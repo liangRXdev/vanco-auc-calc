@@ -413,6 +413,72 @@
     return L.join('\n');
   }
 
+  // ---------- 第二層：外推參考 / 替代方案的可複製摘要 ----------
+  /**
+   * 替代方案（閘門開）或外推參考（閘門關）的可複製文字。
+   *
+   * 與 buildClinicalPlan 的分工必須清楚：那份是「本工具的建議」，這份是
+   * 「暴露-劑量對照表」。因此刻意不共用版型，且**所有外推列一律用畫面格式
+   * `750 mg q12h`，不用病歷格式 `Vancomycin 750 mg IV q12h`**——
+   * 這段在閘門關閉時仍可被複製，不能長得像可以直接貼進醫囑的東西。
+   * （現況那行例外：那是病人已經在用的方案，不是新產生的外推值。）
+   *
+   * @param {object} summary buildClinicalSummary() 的回傳
+   * @param {object|null} custom 自訂試算（同 customSimulationNote 的契約）
+   * @returns {string} 無替代方案且無自訂試算時回空字串
+   */
+  function buildExtrapolationSummary(summary, custom) {
+    const s = summary;
+    if (!s) return '';
+    const alts = s.alternatives || [];
+    if (!alts.length && !custom) return '';
+    const blocked = !!s.blocked;
+    const L = [blocked
+      ? 'Vancomycin 外推參考（非劑量建議，不可直接採用）'
+      : 'Vancomycin 替代方案參考（主要建議見臨床摘要）', ''];
+
+    if (s.current) {
+      L.push('現況：');
+      L.push(s.current.regimen ? regimenChartText(s.current.regimen) : '尚無現行方案（經驗起始）');
+      L.push(`${s.current.aucLabel} ${n0(s.current.auc24)} mg·h/L，${s.status.label}（目標 ${targetRangeText()}）。`);
+      L.push('');
+    }
+
+    if (blocked) {
+      L.push('本案安全閘門已擋下劑量建議，成因：');
+      s.blockedReasons.forEach((x) => L.push(`- ${x}`));
+      L.push('以下數值為線性外推／模型投影，僅供理解「暴露-劑量關係」，不得作為醫囑。');
+      L.push('');
+    }
+
+    if (alts.length) {
+      L.push(blocked ? '外推方案（劑量 → 預估暴露）：' : '其他間隔（劑量 → 預估暴露）：');
+      alts.forEach((o) => {
+        L.push(`- ${regimenText(o)}（${n0(o.dailyMg)} mg/day）→ AUC24 ${n0(o.auc24)}、`
+          + `peak ${n1(o.peak)}、trough ${n1(o.trough)} mg/L`
+          + `${o.impractical ? '（單次過大）' : ''}${o.isCurrent ? '（與現行同間隔）' : ''}`);
+      });
+      L.push('');
+    }
+
+    if (custom) {
+      L.push('自訂試算（使用者指定，非系統建議）：');
+      const inf = isFinite(custom.tInf) ? `輸注 ${custom.tInf}h，` : '';
+      L.push(`- ${custom.dose} mg q${custom.tau}h（${inf}${n0(custom.dailyMg)} mg/day）→ `
+        + `AUC24 ${n0(custom.auc24)}、peak ${n1(custom.peak)}、trough ${n1(custom.trough)} mg/L`);
+      if (custom.rateNote) L.push(`  ${custom.rateNote}`);
+      L.push('');
+    }
+
+    L.push('下一步：');
+    (s.monitoring || []).forEach((x) => L.push(x));
+    L.push('');
+    L.push(blocked
+      ? '本段為參考數值，非本工具的劑量建議；須先處理上述成因並以重複濃度重新評估後，由醫師／藥師決定。'
+      : '本段為其他可行選項，非主要建議；仍應整合感染部位、MIC、臨床反應與腎功能趨勢，由醫師／藥師覆核。');
+    return L.join('\n');
+  }
+
   // ---------- 技術完整版 ----------
   function buildTechnicalReport(result, safety, mode) {
     const r = result || {};
@@ -481,6 +547,7 @@
   const api = {
     buildClinicalSummary, buildClinicalPlan, buildTechnicalReport,
     buildFatalSummary, customSimulationNote, appendCustomSimulation,
+    buildExtrapolationSummary,
     regimenText, regimenChartText, targetRangeText,
     // 顯示用分級：供自訂試算的 what-if badge 使用。**不是閘門**——
     // 是否可給劑量建議一律讀 safety verdict，此處只決定 badge 顏色與字樣。

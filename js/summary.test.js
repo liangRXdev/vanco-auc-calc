@@ -440,5 +440,43 @@ c('S71', SUM.displayTag(500) === '達標' && SUM.displayTag(320) === '偏低'
   && SUM.displayTag(684) === '偏高' && SUM.displayTag(NaN) === '無法判讀',
   'what-if badge 字樣由同一份分級產生，UI 不另寫一套');
 
+// ─────────── 18. 第二層：外推參考／替代方案的可複製摘要 ───────────
+console.log('\n--- 外推參考可複製摘要 ---');
+const extOpenSum = SUM.buildClinicalSummary(mkResult({ auc24: 320 }),
+  S.buildSafetyMessages({ mode: 2, eligibility: { age: 65 }, auc: 320 }), 2);
+const extBlkSum = SUM.buildClinicalSummary(mkResult({ auc24: 320 }),
+  S.buildSafetyMessages({ mode: 2, eligibility: { age: 65, declaredAKI: true }, auc: 320 }), 2);
+const extCustom = { dose: 1250, tau: 12, tInf: 2, dailyMg: 2500, auc24: 610, peak: 38.4, trough: 15.9 };
+const extOpen = SUM.buildExtrapolationSummary(extOpenSum, null);
+const extBlk = SUM.buildExtrapolationSummary(extBlkSum, extCustom);
+
+c('S72', inText(extBlk, '外推參考（非劑量建議，不可直接採用）')
+  && inText(extOpen, '替代方案參考（主要建議見臨床摘要）'),
+  '標題隨閘門狀態改變，BLOCK 版首行即宣告非劑量建議');
+// 這是本功能最關鍵的一條：外推列不得長得像可以直接貼進醫囑的東西。
+const bulletLines = extBlk.split('\n').filter((l) => l.indexOf('- ') === 0);
+c('S73', bulletLines.length > 0 && bulletLines.every((l) => !inText(l, 'Vancomycin') && !inText(l, ' IV ')),
+  'BLOCK 時所有外推列一律用畫面格式（750 mg q12h），不得出現病歷格式醫囑');
+c('S74', inText(extBlk, '750 mg q12h') && inText(extBlk, '1250 mg q12h')
+  && inText(extBlk, 'AUC24 610'),
+  '外推方案與自訂試算的劑量、預估暴露量照常提供（這正是本段的用途）');
+c('S75', inText(extBlk, '本案安全閘門已擋下劑量建議，成因：')
+  && extBlkSum.blockedReasons.every((r) => inText(extBlk, r))
+  && inText(extBlk, '不得作為醫囑'),
+  'BLOCK 版列出全部閘門成因並明示不得作為醫囑');
+c('S76', inText(extBlk, 'Vancomycin 1000 mg IV q12h'),
+  '現況那行仍用病歷格式（病人已在用的方案，非新產生的外推值）');
+c('S77', !inText(extOpen, '安全閘門') && inText(extOpen, '非主要建議'),
+  '閘門開啟時不談閘門，但仍標明此段非主要建議');
+c('S78', inText(extBlk, '下一步：') && extBlkSum.monitoring.every((m) => inText(extBlk, m)),
+  '外推摘要含與臨床摘要一致的下一步（同一份 monitoring，未另寫）');
+c('S79', SUM.buildExtrapolationSummary(extBlkSum, null) !== ''
+  && SUM.buildExtrapolationSummary(
+    SUM.buildClinicalSummary(mkResult({ alternatives: [] }), sfM1Plain, 1), null) === '',
+  '無替代方案且無自訂試算時回空字串（按鈕據此隱藏）');
+c('S80', !inText(SUM.buildClinicalPlan(extBlkSum), '1250')
+  && !inText(SUM.buildClinicalPlan(extBlkSum), '外推方案'),
+  '新增此段不影響臨床簡版：預設複製內容仍不含任何外推劑量');
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
