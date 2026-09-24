@@ -1,0 +1,173 @@
+# Vancomycin AUC Calculator（萬古黴素 AUC 導向劑量計算器）
+
+[English](README.md) | **繁體中文**
+
+繁體中文、純前端、**可安裝 PWA / 可離線**、GitHub Pages 部署的萬古黴素 AUC 導向劑量工具。
+臨床數據集中於 `js/constants.js`，不寫死於邏輯。
+
+> 📲 **PWA（v0.4.2）**：支援「加入主畫面／安裝」，Service Worker 快取完整 app shell → **首次載入後可完全離線計算**（同源 HTML/CSS/JS 皆快取；字型為跨源，離線時退回系統字型，不影響計算）。
+
+🔗 **線上使用**：https://liangrxdev.github.io/vanco-auc-calc/
+> ⚕️ 僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師/醫師覆核。
+
+## 定位
+
+| | 本工具 | clincalc / vancocalc / vancopk |
+|---|---|---|
+| 語言 | **繁體中文** | 英文 |
+| 方法 | 透明公開（顯示公式與模型參數）| 多為 Bayesian  |
+| Bayesian | Goti 2018 二室 MAP，先驗參數公開 |  |
+| 部署 | 純前端、可離線、免伺服器 | 多需線上 |
+| 實證 | 每項建議連結證據來源 | — |
+
+GitHub 調研顯示，目前較少見以繁體中文臨床藥師工作流程為核心、採純前端部署、並完整公開公式與模型參數的 Vancomycin AUC 計算工具。因此，本專案的定位應聚焦於「繁體中文、透明計算、離線可用、便於藥師審查與教學」，而非強調市場唯一性或競品差異。
+
+## 功能
+
+**Mode 1｜經驗起始劑量**（尚無血中濃度）
+- Cockcroft-Gault CrCl → 負荷 20–25 mg/kg TBW（cap 3000）
+- 維持：**族群 CL 反推目標 AUC**（滑桿 400–600，預設 500），非 mg/kg
+- ⚠ 為何不用 mg/kg：15–20 mg/kg q8–12h 是 trough 時代法，會系統性衝破 AUC 400–600（實測對應 AUC 770–1500）。改用 `TDD = 目標AUC × 族群CL`，與 Mode 2/ClinCalc 同邏輯。經 ClinCalc 交叉驗證（見 `docs/validation.md`）
+- **CL 模型可選（v0.4.0）**：Matzke（一般族群，預設）或 **Crass 2018（肥胖 pop-PK）**——BMI≥30 建議切換。Crass `CLV = 9.656−0.078·Age−2.009·SCr+1.09·Sex+0.04·TBW^0.75`（一室、TBW allometric）、Vd 依 BMI 分段（0.8/0.52/0.42 L/kg）、負荷採 nomogram（less is more，固定 2500–3000）。計算維持自動對照 Crass Table 2 nomogram（實測 CLV6→1500 q12h 與 nomogram 一致）。UI 依 BMI 即時提示建議模型。
+- **資料信心 + 臨床聲明（v0.4.1）**：結果頁 badge 顯示信心（經驗起始無實測濃度→Moderate）；聲明勾選 AKI / 懷孕 / CF（無實測濃度故不含時間類）。AKI 只降信心、**仍給起始劑量**（經驗起始必須起步，提示 24h 內複驗）。
+
+**Mode 2｜雙點反算 AUC + 調整**（已有兩點濃度）
+- 間隔內任兩時刻濃度 → Sawchuk-Zaske 算 ke/Vd/CL → **完整兩段式 AUC**（輸注梯形 + 消除對數梯形）
+- 對照目標 400–600 → 比例線性外推各間隔劑量建議
+- **資料信心 + 臨床聲明（v0.4.1）**：badge 依取樣時相與聲明分層（穩態雙點+時相合理→High）；聲明 AKI / 給藥或採血時間不可靠 / 懷孕 / CF。**AKI 使外推維持劑量不可靠**→劑量表加 caveat、Plan 標註（但**量測 AUC 本身仍有效、照常顯示**）。
+
+**Mode 3｜Bayesian AUC**（1–2 點，可非穩態）
+- **Goti 2018 二室族群 PK 模型**為先驗；RK4 模擬給藥史，MAP（Sheiner-Beal 目標函數）+ Nelder-Mead 最佳化求個體 CL/Vc/Vp
+- 優勢：**單一濃度、非穩態、早至首劑後**即可估 AUC
+- 輸出：個體 PK（先驗→個體 η）、擬合檢核、達目標劑量建議（穩態峰/谷）
+- **自訂方案試算（v0.4.3）**：算完 AUC 後可輸入任意劑量／間隔／輸注時長，以本次 MAP 個體 PK 跑**二室穩態模擬**預測新方案的峰/谷/AUC₂₄，並回寫可複製 Plan。輸注時長開放編輯——二室下 tInf 實際影響峰值（2000mg q24h：1h vs 3h 峰差 5.2 mg/L）。安全閘門擋下劑量建議時（AKI / AUC>600 / HD）**仍可試算但加註警語**：自訂方案是使用者指定的 what-if 投影，語意上不同於工具主動建議
+- 安全閘門（v0.3.0）：多起點收斂檢查、NaN 守衛、非穩態取樣標「穩態投影」、AUC>600 改結構化處置（不逕給單行減量）
+- 資料信心分層（v0.3.2，**由 L2 shrinkage 背書**）：穩態雙點→High、穩態單點→Moderate、非穩態→Low，結果頁以 badge 呈現
+- 臨床聲明勾選（v0.3.2）：AKI / 給藥或採血時間不可靠 / 懷孕 / CF（無法自動偵測，勾選後降信心；此模式 AKI 停出劑量建議）
+
+> **v0.4.1**：資料信心 badge 與臨床聲明勾選已延伸至 **全部三個模式**（原僅 Mode 3）。AKI 處置**依模式而異**——Mode 1 經驗起始仍給起始劑量（僅降信心）；Mode 2/3 依實測外推/投影，AKI 使其不可靠 → 停出劑量建議 / 外推劑量加 caveat。
+
+> 💧 **輸注速率提示（v0.4.3，三模式一致）**：文獻來源不一致——FDA/部分仿單 ≤10 mg/min、UpToDate 10–15 mg/min、另有藥廠仿單與普遍實務採 1g/60min（≈16.7 mg/min）。故將**建議與警示分離**：輸注時長欄位旁以淡色標示建議值（10–15 mg/min，或 1g/60min）；**警示僅在 >17 mg/min 或短於 60 min 才觸發**——17 刻意高於 1g/60min 的 16.7，避免對這個普遍且多數來源接受的實務誤報。**僅屬給藥安全**：AUC=每日總量/CL 不受 tInf 影響，故以淡色小提示呈現、不降信心、不擋劑量建議。Mode 1 不收 tInf（峰/谷固定假設輸注 1h），僅陳述建議區間並揭露該假設。
+
+> ⚠️ **血液透析（HD）為 experimental / research-use**：Goti 模型僅含二元透析共變數（CL×0.7、Vc×0.5），**未建模**透析清除率、intradialytic dosing 與 post-HD 再分布。HD 之 Bayesian 輸出**僅供 AUC 估計參考、不產生具體劑量建議**，須臨床人員自行判斷。
+
+**適用族群**：成人（≥18 歲）正常腎功能、肥胖（BMI≥30）、腎功能不全。
+**受限 / 不涵蓋**：間歇性 HD（research-use，見上）；CRRT / SLED / ECMO / 兒童 / 孕婦（未建模或先驗不適用，見工具內警示）。
+
+### ⚠️ 兩個關鍵設計約束
+
+1. **體重雙用**：Vanco 劑量 mg/kg 用 **actual body weight (TBW)**；Cockcroft-Gault CrCl 用 **AdjBW**（肥胖）= IBW + 0.4×(TBW−IBW)。
+2. **AUC 完整兩段式**（Mode 2）：`AUC_τ = (Cmax+Cmin)/2×t_inf + (Cmax−Cmin)/ke`，非僅消除期簡化式（後者低估 ~10%，已於 `pk.test.js` 佐證 9.5%）。
+
+## 結果頁資訊層級（v0.5.1）
+
+結果頁改為四層，使用者在第一屏即可回答「達標否 / 可否信任 / 改成什麼 / 預估多少 / 何時再監測」：
+
+| 層 | 內容 | 預設 |
+|---|---|---|
+| 1 臨床摘要 | 狀態列（達標／低於目標／高於目標／暫不建議調整／資料不足）→ 目前評估 → 建議＋預估 → 下一步監測 → 主要限制（≤3 條） | 永遠展開 |
+| 2 替代方案 | Mode 2 各間隔劑量表、自訂試算 | 折疊 |
+| 3 進階 PK 與模型資訊 | CL/Vd/ke/t½、Bayesian η/Vc/Vp、擬合診斷、計算式、模型來源 | 折疊 |
+| 4 安全與適用性說明 | 完整 safety messages 與免責 | 折疊 |
+
+- **可複製兩版**：`複製臨床摘要`（預設，僅結論／建議／預估／監測／注意）與 `複製完整 PK 報告`（方法、PK 參數、confidence、完整 safety messages、候選方案）。
+- **狀態不單靠顏色**：badge 一律同時帶 icon 與文字。
+- **「建議」與「預估」分標籤**，避免模型預測被讀成醫囑。
+- 摘要不自行判讀安全性：可否給劑量建議一律讀 `safety.allowDoseRecommendation`；AUC 判讀取 safety 的 `AUC_OK/LOW/HIGH` 訊息碼；AUC>600 的結構化處置直接取 `SAFETY.auc600Management()`。
+- **BLOCK 時**（AKI／HD／AUC>600／採血時間不可靠／Bayesian 擬合失敗／小兒／CRRT）摘要與臨床簡版**不含任何具體新劑量**，改列成因與下一步；量測 AUC、現行方案照常顯示。Mode 2 的間隔劑量表改標「外推參考（本案不可直接採用）」。
+- **WARNING 時建議旁有單一 caveat**：取排序最高的一項緊鄰建議（`recommendation.caveat`），該項即不再重複列進「主要限制」——同一句話在一屏出現兩次只會讓人整區跳過。
+- **第二層另有一顆複製鈕**：`複製替代方案`／BLOCK 時改名 `複製外推參考（不可直接採用）`。內容為「現況 → 閘門成因 → 各間隔與自訂試算的劑量-暴露對照 → 下一步 → 非醫囑聲明」。**外推列一律用畫面格式 `750 mg q12h`，不用病歷格式 `Vancomycin 750 mg IV q12h`**——這段在閘門關閉時仍可複製，不能長得像可直接貼上的醫囑；只有「現況」那行用病歷格式（病人已在用的方案）。預設複製鈕仍是臨床簡版，其內容不含任何外推劑量。
+- **自訂試算（what-if）**：BLOCK 時 `複製臨床摘要` 只留「曾執行自訂試算、因安全閘門未納入」與成因，**不帶劑量、間隔或預估暴露量**；`複製完整 PK 報告` 保留數值供覆核並標明不可靠。分版規則寫在 `SUMMARY.customSimulationNote()`，UI 不得自行拼接。
+- **計算失敗時第一屏不留白**：輸入不合法、雙點反算失敗、Bayesian 未收斂皆改走 `SUMMARY.buildFatalSummary()`，於第一層列出原因與明確下一步（第四層 `<details>` 預設收合，只寫進去等於什麼都沒顯示）。
+- **安全邊界 fail-closed**：`buildClinicalSummary()` 未拿到完整 verdict（缺 `allowCalculation` / `allowDoseRecommendation`）時一律視為不可計算、不出劑量建議。
+- ⚠️ **採血時間不可靠改為封鎖劑量建議（v0.5.0 語意變更）**：AUC 估計本身即建立在採血時刻上，時刻不可信時由該 AUC 外推的新劑量同樣不可信。原本僅降信心至 Moderate。
+
+## 後續（未開工）
+
+- ~~Crass 2018 肥胖 CLV~~（v0.4.0 已納 Mode 1 CL 模型選項）
+- CRRT / 持續輸注（CI）
+- 給藥史「完整事件列」進階模式（目前為規則方案）
+- L4 外部臨床對照（待真實富取樣 / 商用 Bayesian 資料，見 `docs/bayes-validation.md`）
+
+## 架構
+
+```
+vanco-auc-calc/
+├── index.html          # 單頁，三 tab（含 PWA manifest/SW 註冊）
+├── manifest.webmanifest # PWA 安裝資訊（名稱/圖示/主題色）
+├── sw.js               # Service Worker（快取 app shell，離線可用）
+├── icons/              # PWA 圖示（192/512/maskable-512/apple-touch）
+├── js/
+│   ├── constants.js    # 臨床常數（VANCO / CG / GOTI，集中管理）
+│   ├── pk.js           # 一室藥動學純函式（Mode 1/2）
+│   ├── pk.test.js      # sanity test（28/28；含 Crass 肥胖 CL）
+│   ├── bayes.js            # 二室 Bayesian MAP 引擎（Mode 3；含收斂/多起點/NaN 守衛）
+│   ├── bayes.test.js       # sanity test（31/31）
+│   ├── bayes.validation.js # L1 解析解 oracle + L2 模擬-估計（可重跑）
+│   ├── bayes.golden.test.js# golden-master 回歸基準（21/21）
+│   ├── safety.js           # 確定性安全層（eligibility / 濃度守衛 / 擬合守衛 / AUC 分級）
+│   ├── safety.test.js      # 安全行為 C-cases（51/51）
+│   ├── summary.js          # 臨床摘要組裝（純函式：摘要 / 臨床簡版 Plan / 技術完整版）
+│   ├── summary.test.js     # 摘要分層行為 S-cases（83/83）
+│   ├── viewmodel.js        # PK 結果 → 摘要契約的攤平（純函式，三模式各一）
+│   ├── viewmodel.test.js   # 攤平正確性 V-cases（34/34；以真實 PK/BAYES 回傳為輸入）
+│   └── ui.js               # DOM 綁定與渲染
+└── css/style.css           # Noto Sans TC + DM Mono、BEM
+```
+
+技術：純 HTML/CSS/JS 無框架（同 bicarb-dosing-calc）。
+
+## 測試
+
+```bash
+node js/pk.test.js           # Mode 1/2（一室、Sawchuk-Zaske、Crass 肥胖）    28/28
+node js/bayes.test.js        # Mode 3（收斂旗標、NaN 守衛、穩態 AUC）        31/31
+node js/safety.test.js       # 安全層行為（BLOCK/WARNING 觸發正確性、輸注速率）51/51
+node js/summary.test.js      # 臨床摘要分層（判讀/閘門/兩版文字/格式/邊界）    83/83
+node js/viewmodel.test.js    # PK 結果 → 摘要契約的攤平（三模式）            34/34
+node js/bayes.golden.test.js # golden-master 回歸基準                        21/21
+node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估計（N=1000）
+```
+
+> ⚠️ `*.test.js` 多為 **verification（自洽一致性）**。真正的 Mode 3 **validation** 走 `bayes.validation.js`：L1 以**獨立解析解**交叉驗證 RK4（打破 round-trip 循環性），L2 以模擬-估計量測 bias/precision/shrinkage。詳見 `docs/bayes-validation.md`。
+
+## Validation status
+
+| 範圍 | 狀態 |
+|---|---|
+| Mode 1/2 數值 | 有限數學驗證 + 對 ClinCalc 選定案例交叉核對（見 `docs/validation.md`）|
+| Mode 3 引擎 | **L1 獨立解析解 oracle：PASS**（RK4 vs 封閉解 <1e-6）；**L2 模擬-估計：完成**（N=1000，若 Goti 為真估計器無偏）。見 `docs/bayes-validation.md` |
+| 外部 Bayesian 對照 | 商用工具 / 富取樣 AUC：**未執行** |
+| 前瞻臨床驗證 | **未執行** |
+
+## 參考文獻（References）
+
+臨床指引與模型：
+
+- Rybak, M. J., Le, J., Lodise, T. P., Levine, D. P., Bradley, J. S., Liu, C., Mueller, B. A., Pai, M. P., Wong-Beringer, A., Rotschafer, J. C., Rodvold, K. A., Maples, H. D., & Lomaestro, B. M. (2020). Therapeutic monitoring of vancomycin for serious methicillin-resistant *Staphylococcus aureus* infections: A revised consensus guideline and review by the American Society of Health-System Pharmacists, the Infectious Diseases Society of America, the Pediatric Infectious Diseases Society, and the Society of Infectious Diseases Pharmacists. *American Journal of Health-System Pharmacy, 77*(11), 835–864. https://doi.org/10.1093/ajhp/zxaa036
+
+- Goti, V., Chaturvedula, A., Fossler, M. J., Mok, S., & Jacob, J. T. (2018). Hospitalized patients with and without hemodialysis have markedly different vancomycin pharmacokinetics: A population pharmacokinetic model-based analysis. *Therapeutic Drug Monitoring, 40*(2), 212–221. https://doi.org/10.1097/FTD.0000000000000459
+
+- Crass, R. L., Dunn, R., Hong, J., Krop, L. C., & Pai, M. P. (2018). Dosing vancomycin in the super obese: Less is more. *Journal of Antimicrobial Chemotherapy, 73*(11), 3081–3086. https://doi.org/10.1093/jac/dky310
+
+- Chen, A., Gupta, A., Do, D. H., & Nazer, L. H. (2022). Bayesian method application: Integrating mathematical modeling into clinical pharmacy through vancomycin therapeutic monitoring. *Pharmacology Research & Perspectives, 10*(6), e01026. https://doi.org/10.1002/prp2.1026
+
+- Broeker, A., Nardecchia, M., Klinker, K. P., Derendorf, H., Day, R. O., Marriott, D. J., Carland, J. E., Stocker, S. L., & Wicha, S. G. (2019). Towards precision dosing of vancomycin: A systematic evaluation of pharmacometric models for Bayesian forecasting. *Clinical Microbiology and Infection, 25*(10), 1286.e1–1286.e7. https://doi.org/10.1016/j.cmi.2019.02.029
+
+計算方法（PK/statistics）：
+
+- Sawchuk, R. J., & Zaske, D. E. (1976). Pharmacokinetics of dosing regimens which utilize multiple intravenous infusions: Gentamicin in burn patients. *Journal of Pharmacokinetics and Biopharmaceutics, 4*(2), 183–195. https://doi.org/10.1007/BF01086153
+
+- Matzke, G. R., McGory, R. W., Halstenson, C. E., & Keane, W. F. (1984). Pharmacokinetics of vancomycin in patients with various degrees of renal function. *Antimicrobial Agents and Chemotherapy, 25*(4), 433–437. https://doi.org/10.1128/AAC.25.4.433
+
+- Sheiner, L. B., Beal, S., Rosenberg, B., & Marathe, V. V. (1979). Forecasting individual pharmacokinetics. *Clinical Pharmacology & Therapeutics, 26*(3), 294–305. https://doi.org/10.1002/cpt1979263294
+
+給藥速率（來源不一致，本工具採「建議 10–15 mg/min、警示 >17 mg/min」，理由見 `js/constants.js`）：
+
+- 萬古黴素仿單（FDA prescribing information）：≤10 mg/min 或至少 60 分鐘輸注。
+- UpToDate／Lexicomp 藥物專論：建議 10–15 mg/min。
+- 部分藥廠仿單與普遍臨床實務：1 g / 60 min（≈16.7 mg/min）。
+
+## 授權
+
+MIT License（見 `LICENSE`）。臨床內容僅供教育與決策輔助用途。

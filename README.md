@@ -1,146 +1,148 @@
-# Vancomycin AUC Calculator（萬古黴素 AUC 導向劑量計算器）
+# Vancomycin AUC Calculator (萬古黴素 AUC 導向劑量計算器)
 
-繁體中文、純前端、**可安裝 PWA / 可離線**、GitHub Pages 部署的萬古黴素 AUC 導向劑量工具。
-臨床數據集中於 `js/constants.js`，不寫死於邏輯。
+**English** | [繁體中文](README.zh-TW.md)
 
-> 📲 **PWA（v0.4.2）**：支援「加入主畫面／安裝」，Service Worker 快取完整 app shell → **首次載入後可完全離線計算**（同源 HTML/CSS/JS 皆快取；字型為跨源，離線時退回系統字型，不影響計算）。
+An AUC-guided vancomycin dosing tool in Traditional Chinese: pure frontend, **installable PWA / works offline**, deployed on GitHub Pages.
+Clinical data are centralized in `js/constants.js` rather than hard-coded in the logic.
 
-🔗 **線上使用**：https://liangrxdev.github.io/vanco-auc-calc/
-> ⚕️ 僅供臨床決策輔助，不取代專業判斷。所有劑量須經藥師/醫師覆核。
+> 📲 **PWA (v0.4.2)**: supports "Add to Home Screen / Install"; the service worker caches the full app shell → **fully offline calculation after the first load** (all same-origin HTML/CSS/JS is cached; fonts are cross-origin and fall back to system fonts offline, which does not affect calculation).
 
-## 定位
+🔗 **Use it online**: https://liangrxdev.github.io/vanco-auc-calc/
+> ⚕️ For clinical decision support only; does not replace professional judgment. All doses must be reviewed by a pharmacist/physician.
 
-| | 本工具 | clincalc / vancocalc / vancopk |
+## Positioning
+
+| | This tool | clincalc / vancocalc / vancopk |
 |---|---|---|
-| 語言 | **繁體中文** | 英文 |
-| 方法 | 透明公開（顯示公式與模型參數）| 多為 Bayesian  |
-| Bayesian | Goti 2018 二室 MAP，先驗參數公開 |  |
-| 部署 | 純前端、可離線、免伺服器 | 多需線上 |
-| 實證 | 每項建議連結證據來源 | — |
+| Language | **Traditional Chinese** | English |
+| Method | Transparent (formulas and model parameters shown) | Mostly Bayesian |
+| Bayesian | Goti 2018 two-compartment MAP, priors published |  |
+| Deployment | Pure frontend, offline-capable, serverless | Mostly online-only |
+| Evidence | Every recommendation links to its evidence source | — |
 
-GitHub 調研顯示，目前較少見以繁體中文臨床藥師工作流程為核心、採純前端部署、並完整公開公式與模型參數的 Vancomycin AUC 計算工具。因此，本專案的定位應聚焦於「繁體中文、透明計算、離線可用、便於藥師審查與教學」，而非強調市場唯一性或競品差異。
+A GitHub survey found few vancomycin AUC tools built around a Traditional Chinese clinical-pharmacist workflow, deployed as pure frontend, and fully publishing their formulas and model parameters. The project's positioning is therefore "Traditional Chinese, transparent calculation, offline-capable, easy for pharmacists to review and teach with", rather than claiming market uniqueness or competitive differentiation.
 
-## 功能
+## Features
 
-**Mode 1｜經驗起始劑量**（尚無血中濃度）
-- Cockcroft-Gault CrCl → 負荷 20–25 mg/kg TBW（cap 3000）
-- 維持：**族群 CL 反推目標 AUC**（滑桿 400–600，預設 500），非 mg/kg
-- ⚠ 為何不用 mg/kg：15–20 mg/kg q8–12h 是 trough 時代法，會系統性衝破 AUC 400–600（實測對應 AUC 770–1500）。改用 `TDD = 目標AUC × 族群CL`，與 Mode 2/ClinCalc 同邏輯。經 ClinCalc 交叉驗證（見 `docs/validation.md`）
-- **CL 模型可選（v0.4.0）**：Matzke（一般族群，預設）或 **Crass 2018（肥胖 pop-PK）**——BMI≥30 建議切換。Crass `CLV = 9.656−0.078·Age−2.009·SCr+1.09·Sex+0.04·TBW^0.75`（一室、TBW allometric）、Vd 依 BMI 分段（0.8/0.52/0.42 L/kg）、負荷採 nomogram（less is more，固定 2500–3000）。計算維持自動對照 Crass Table 2 nomogram（實測 CLV6→1500 q12h 與 nomogram 一致）。UI 依 BMI 即時提示建議模型。
-- **資料信心 + 臨床聲明（v0.4.1）**：結果頁 badge 顯示信心（經驗起始無實測濃度→Moderate）；聲明勾選 AKI / 懷孕 / CF（無實測濃度故不含時間類）。AKI 只降信心、**仍給起始劑量**（經驗起始必須起步，提示 24h 內複驗）。
+**Mode 1 | Empirical starting dose** (no serum levels yet)
+- Cockcroft-Gault CrCl → loading dose 20–25 mg/kg TBW (cap 3000)
+- Maintenance: **back-calculated from population CL to a target AUC** (slider 400–600, default 500), not mg/kg
+- ⚠ Why not mg/kg: 15–20 mg/kg q8–12h is a trough-era method that systematically overshoots AUC 400–600 (measured correspondence: AUC 770–1500). Instead `TDD = target AUC × population CL`, the same logic as Mode 2/ClinCalc. Cross-validated against ClinCalc (see `docs/validation.md`)
+- **Selectable CL model (v0.4.0)**: Matzke (general population, default) or **Crass 2018 (obesity pop-PK)** — switching is suggested at BMI≥30. Crass `CLV = 9.656−0.078·Age−2.009·SCr+1.09·Sex+0.04·TBW^0.75` (one-compartment, TBW allometric), Vd stratified by BMI (0.8/0.52/0.42 L/kg), loading dose per nomogram (less is more, fixed 2500–3000). The computed maintenance dose is automatically compared against the Crass Table 2 nomogram (measured CLV6 → 1500 q12h, matching the nomogram). The UI suggests a model live based on BMI.
+- **Data confidence + clinical declarations (v0.4.1)**: a badge on the results page shows confidence (empirical start with no measured level → Moderate); declarations for AKI / pregnancy / CF (no timing items, since there are no measured levels). AKI only lowers confidence and **still gives a starting dose** (an empirical start has to begin somewhere; the tool prompts a recheck within 24 h).
 
-**Mode 2｜雙點反算 AUC + 調整**（已有兩點濃度）
-- 間隔內任兩時刻濃度 → Sawchuk-Zaske 算 ke/Vd/CL → **完整兩段式 AUC**（輸注梯形 + 消除對數梯形）
-- 對照目標 400–600 → 比例線性外推各間隔劑量建議
-- **資料信心 + 臨床聲明（v0.4.1）**：badge 依取樣時相與聲明分層（穩態雙點+時相合理→High）；聲明 AKI / 給藥或採血時間不可靠 / 懷孕 / CF。**AKI 使外推維持劑量不可靠**→劑量表加 caveat、Plan 標註（但**量測 AUC 本身仍有效、照常顯示**）。
+**Mode 2 | Two-level AUC back-calculation + adjustment** (two levels available)
+- Two levels at any two times within an interval → Sawchuk-Zaske for ke/Vd/CL → **full two-part AUC** (infusion trapezoid + elimination log-trapezoid)
+- Compared with target 400–600 → proportional linear extrapolation of dose suggestions for each interval
+- **Data confidence + clinical declarations (v0.4.1)**: the badge is tiered by sampling phase and declarations (steady-state two levels + plausible timing → High); declarations for AKI / unreliable dosing or sampling times / pregnancy / CF. **AKI makes extrapolated maintenance doses unreliable** → caveat on the dose table and flagged in the Plan (but **the measured AUC itself remains valid and is shown as usual**).
 
-**Mode 3｜Bayesian AUC**（1–2 點，可非穩態）
-- **Goti 2018 二室族群 PK 模型**為先驗；RK4 模擬給藥史，MAP（Sheiner-Beal 目標函數）+ Nelder-Mead 最佳化求個體 CL/Vc/Vp
-- 優勢：**單一濃度、非穩態、早至首劑後**即可估 AUC
-- 輸出：個體 PK（先驗→個體 η）、擬合檢核、達目標劑量建議（穩態峰/谷）
-- **自訂方案試算（v0.4.3）**：算完 AUC 後可輸入任意劑量／間隔／輸注時長，以本次 MAP 個體 PK 跑**二室穩態模擬**預測新方案的峰/谷/AUC₂₄，並回寫可複製 Plan。輸注時長開放編輯——二室下 tInf 實際影響峰值（2000mg q24h：1h vs 3h 峰差 5.2 mg/L）。安全閘門擋下劑量建議時（AKI / AUC>600 / HD）**仍可試算但加註警語**：自訂方案是使用者指定的 what-if 投影，語意上不同於工具主動建議
-- 安全閘門（v0.3.0）：多起點收斂檢查、NaN 守衛、非穩態取樣標「穩態投影」、AUC>600 改結構化處置（不逕給單行減量）
-- 資料信心分層（v0.3.2，**由 L2 shrinkage 背書**）：穩態雙點→High、穩態單點→Moderate、非穩態→Low，結果頁以 badge 呈現
-- 臨床聲明勾選（v0.3.2）：AKI / 給藥或採血時間不可靠 / 懷孕 / CF（無法自動偵測，勾選後降信心；此模式 AKI 停出劑量建議）
+**Mode 3 | Bayesian AUC** (1–2 levels, non-steady-state allowed)
+- **Goti 2018 two-compartment population PK model** as the prior; RK4 simulates the dosing history, MAP (Sheiner-Beal objective function) + Nelder-Mead optimization for individual CL/Vc/Vp
+- Advantage: AUC can be estimated from **a single level, at non-steady state, as early as after the first dose**
+- Output: individual PK (prior → individual η), fit diagnostics, dose suggestion to reach target (steady-state peak/trough)
+- **Custom regimen simulation (v0.4.3)**: after computing AUC, enter any dose / interval / infusion time to run a **two-compartment steady-state simulation** with this MAP individual PK, predicting the new regimen's peak/trough/AUC₂₄ and writing back a copyable Plan. Infusion time is editable — under a two-compartment model tInf really affects the peak (2000 mg q24h: 1 h vs 3 h peak differs by 5.2 mg/L). When a safety gate blocks dose recommendations (AKI / AUC>600 / HD) **simulation is still allowed but annotated with a warning**: a custom regimen is a user-specified what-if projection, semantically different from a recommendation made by the tool
+- Safety gates (v0.3.0): multi-start convergence check, NaN guards, non-steady-state sampling labelled "steady-state projection", AUC>600 switched to structured management (no one-line dose reduction)
+- Tiered data confidence (v0.3.2, **backed by L2 shrinkage**): steady-state two levels → High, steady-state single level → Moderate, non-steady-state → Low, shown as a badge on the results page
+- Clinical declarations (v0.3.2): AKI / unreliable dosing or sampling times / pregnancy / CF (cannot be detected automatically; checking them lowers confidence; in this mode AKI stops dose recommendations)
 
-> **v0.4.1**：資料信心 badge 與臨床聲明勾選已延伸至 **全部三個模式**（原僅 Mode 3）。AKI 處置**依模式而異**——Mode 1 經驗起始仍給起始劑量（僅降信心）；Mode 2/3 依實測外推/投影，AKI 使其不可靠 → 停出劑量建議 / 外推劑量加 caveat。
+> **v0.4.1**: The data-confidence badge and clinical declarations now cover **all three modes** (previously Mode 3 only). AKI handling **differs by mode** — Mode 1's empirical start still gives a starting dose (confidence lowered only); Modes 2/3 extrapolate/project from measured levels, which AKI makes unreliable → dose recommendations stopped / extrapolated doses caveated.
 
-> 💧 **輸注速率提示（v0.4.3，三模式一致）**：文獻來源不一致——FDA/部分仿單 ≤10 mg/min、UpToDate 10–15 mg/min、另有藥廠仿單與普遍實務採 1g/60min（≈16.7 mg/min）。故將**建議與警示分離**：輸注時長欄位旁以淡色標示建議值（10–15 mg/min，或 1g/60min）；**警示僅在 >17 mg/min 或短於 60 min 才觸發**——17 刻意高於 1g/60min 的 16.7，避免對這個普遍且多數來源接受的實務誤報。**僅屬給藥安全**：AUC=每日總量/CL 不受 tInf 影響，故以淡色小提示呈現、不降信心、不擋劑量建議。Mode 1 不收 tInf（峰/谷固定假設輸注 1h），僅陳述建議區間並揭露該假設。
+> 💧 **Infusion-rate guidance (v0.4.3, consistent across all three modes)**: sources disagree — FDA / some labels say ≤10 mg/min, UpToDate says 10–15 mg/min, and other manufacturer labels and common practice use 1 g/60 min (≈16.7 mg/min). So **recommendation and warning are separated**: the recommended value (10–15 mg/min, or 1 g/60 min) is shown faintly next to the infusion-time field; **the warning fires only above 17 mg/min or below 60 min** — 17 is deliberately above the 16.7 of 1 g/60 min to avoid false alarms on this common, widely accepted practice. **This is purely an administration-safety matter**: AUC = daily dose / CL is unaffected by tInf, so it is a faint hint that doesn't lower confidence or block dose recommendations. Mode 1 doesn't take tInf (peak/trough assume a fixed 1 h infusion); it only states the recommended range and discloses the assumption.
 
-> ⚠️ **血液透析（HD）為 experimental / research-use**：Goti 模型僅含二元透析共變數（CL×0.7、Vc×0.5），**未建模**透析清除率、intradialytic dosing 與 post-HD 再分布。HD 之 Bayesian 輸出**僅供 AUC 估計參考、不產生具體劑量建議**，須臨床人員自行判斷。
+> ⚠️ **Hemodialysis (HD) is experimental / research-use**: the Goti model has only a binary dialysis covariate (CL×0.7, Vc×0.5) and **does not model** dialysis clearance, intradialytic dosing or post-HD redistribution. Bayesian output for HD is **for AUC estimation reference only and produces no specific dose recommendation**; clinicians must judge for themselves.
 
-**適用族群**：成人（≥18 歲）正常腎功能、肥胖（BMI≥30）、腎功能不全。
-**受限 / 不涵蓋**：間歇性 HD（research-use，見上）；CRRT / SLED / ECMO / 兒童 / 孕婦（未建模或先驗不適用，見工具內警示）。
+**Target population**: adults (≥18 years) with normal renal function, obesity (BMI≥30), or renal impairment.
+**Limited / not covered**: intermittent HD (research-use, see above); CRRT / SLED / ECMO / children / pregnancy (not modelled or prior not applicable; see in-tool warnings).
 
-### ⚠️ 兩個關鍵設計約束
+### ⚠️ Two key design constraints
 
-1. **體重雙用**：Vanco 劑量 mg/kg 用 **actual body weight (TBW)**；Cockcroft-Gault CrCl 用 **AdjBW**（肥胖）= IBW + 0.4×(TBW−IBW)。
-2. **AUC 完整兩段式**（Mode 2）：`AUC_τ = (Cmax+Cmin)/2×t_inf + (Cmax−Cmin)/ke`，非僅消除期簡化式（後者低估 ~10%，已於 `pk.test.js` 佐證 9.5%）。
+1. **Two weights**: vancomycin mg/kg dosing uses **actual body weight (TBW)**; Cockcroft-Gault CrCl uses **AdjBW** (obesity) = IBW + 0.4×(TBW−IBW).
+2. **Full two-part AUC** (Mode 2): `AUC_τ = (Cmax+Cmin)/2×t_inf + (Cmax−Cmin)/ke`, not the elimination-phase-only simplification (which underestimates by ~10%; `pk.test.js` shows 9.5%).
 
-## 結果頁資訊層級（v0.5.1）
+## Results Page Information Hierarchy (v0.5.1)
 
-結果頁改為四層，使用者在第一屏即可回答「達標否 / 可否信任 / 改成什麼 / 預估多少 / 何時再監測」：
+The results page has four layers, so on the first screen the user can answer "on target? / trustworthy? / change to what? / predicted how much? / when to monitor next?":
 
-| 層 | 內容 | 預設 |
+| Layer | Content | Default |
 |---|---|---|
-| 1 臨床摘要 | 狀態列（達標／低於目標／高於目標／暫不建議調整／資料不足）→ 目前評估 → 建議＋預估 → 下一步監測 → 主要限制（≤3 條） | 永遠展開 |
-| 2 替代方案 | Mode 2 各間隔劑量表、自訂試算 | 折疊 |
-| 3 進階 PK 與模型資訊 | CL/Vd/ke/t½、Bayesian η/Vc/Vp、擬合診斷、計算式、模型來源 | 折疊 |
-| 4 安全與適用性說明 | 完整 safety messages 與免責 | 折疊 |
+| 1 Clinical summary | Status bar (on target / below target / above target / adjustment not advised / insufficient data) → current assessment → recommendation + prediction → next monitoring → key limitations (≤3) | Always expanded |
+| 2 Alternatives | Mode 2 per-interval dose table, custom simulation | Collapsed |
+| 3 Advanced PK and model info | CL/Vd/ke/t½, Bayesian η/Vc/Vp, fit diagnostics, formulas, model source | Collapsed |
+| 4 Safety and applicability | Full safety messages and disclaimer | Collapsed |
 
-- **可複製兩版**：`複製臨床摘要`（預設，僅結論／建議／預估／監測／注意）與 `複製完整 PK 報告`（方法、PK 參數、confidence、完整 safety messages、候選方案）。
-- **狀態不單靠顏色**：badge 一律同時帶 icon 與文字。
-- **「建議」與「預估」分標籤**，避免模型預測被讀成醫囑。
-- 摘要不自行判讀安全性：可否給劑量建議一律讀 `safety.allowDoseRecommendation`；AUC 判讀取 safety 的 `AUC_OK/LOW/HIGH` 訊息碼；AUC>600 的結構化處置直接取 `SAFETY.auc600Management()`。
-- **BLOCK 時**（AKI／HD／AUC>600／採血時間不可靠／Bayesian 擬合失敗／小兒／CRRT）摘要與臨床簡版**不含任何具體新劑量**，改列成因與下一步；量測 AUC、現行方案照常顯示。Mode 2 的間隔劑量表改標「外推參考（本案不可直接採用）」。
-- **WARNING 時建議旁有單一 caveat**：取排序最高的一項緊鄰建議（`recommendation.caveat`），該項即不再重複列進「主要限制」——同一句話在一屏出現兩次只會讓人整區跳過。
-- **第二層另有一顆複製鈕**：`複製替代方案`／BLOCK 時改名 `複製外推參考（不可直接採用）`。內容為「現況 → 閘門成因 → 各間隔與自訂試算的劑量-暴露對照 → 下一步 → 非醫囑聲明」。**外推列一律用畫面格式 `750 mg q12h`，不用病歷格式 `Vancomycin 750 mg IV q12h`**——這段在閘門關閉時仍可複製，不能長得像可直接貼上的醫囑；只有「現況」那行用病歷格式（病人已在用的方案）。預設複製鈕仍是臨床簡版，其內容不含任何外推劑量。
-- **自訂試算（what-if）**：BLOCK 時 `複製臨床摘要` 只留「曾執行自訂試算、因安全閘門未納入」與成因，**不帶劑量、間隔或預估暴露量**；`複製完整 PK 報告` 保留數值供覆核並標明不可靠。分版規則寫在 `SUMMARY.customSimulationNote()`，UI 不得自行拼接。
-- **計算失敗時第一屏不留白**：輸入不合法、雙點反算失敗、Bayesian 未收斂皆改走 `SUMMARY.buildFatalSummary()`，於第一層列出原因與明確下一步（第四層 `<details>` 預設收合，只寫進去等於什麼都沒顯示）。
-- **安全邊界 fail-closed**：`buildClinicalSummary()` 未拿到完整 verdict（缺 `allowCalculation` / `allowDoseRecommendation`）時一律視為不可計算、不出劑量建議。
-- ⚠️ **採血時間不可靠改為封鎖劑量建議（v0.5.0 語意變更）**：AUC 估計本身即建立在採血時刻上，時刻不可信時由該 AUC 外推的新劑量同樣不可信。原本僅降信心至 Moderate。
+- **Two copy versions**: `複製臨床摘要` (copy clinical summary; default — conclusion / recommendation / prediction / monitoring / cautions only) and `複製完整 PK 報告` (copy full PK report — method, PK parameters, confidence, full safety messages, candidate regimens).
+- **Status never relies on color alone**: badges always carry both an icon and text.
+- **"Recommendation" and "prediction" have separate labels**, so model predictions aren't read as orders.
+- The summary never judges safety on its own: whether a dose recommendation is allowed always reads `safety.allowDoseRecommendation`; AUC interpretation takes safety's `AUC_OK/LOW/HIGH` message codes; structured management for AUC>600 comes straight from `SAFETY.auc600Management()`.
+- **On BLOCK** (AKI / HD / AUC>600 / unreliable sampling times / Bayesian fit failure / pediatric / CRRT) the summary and short clinical version **contain no specific new dose**, listing the cause and next step instead; the measured AUC and current regimen are shown as usual. Mode 2's interval dose table is relabelled "extrapolated reference (not directly applicable to this case)".
+- **On WARNING there is a single caveat next to the recommendation**: the highest-ranked item sits right beside it (`recommendation.caveat`) and is then not repeated under "key limitations" — the same sentence twice on one screen just makes people skip the whole area.
+- **Layer 2 has its own copy button**: `複製替代方案` (copy alternatives) / on BLOCK renamed `複製外推參考（不可直接採用）` (copy extrapolated reference — not directly applicable). Content: "current state → gate cause → dose–exposure comparison for each interval and custom simulation → next step → not-an-order statement". **Extrapolated rows always use the on-screen format `750 mg q12h`, never the chart format `Vancomycin 750 mg IV q12h`** — this section can still be copied when the gate is closed, so it must not look like a paste-ready order; only the "current state" line uses the chart format (the regimen the patient is already on). The default copy button remains the short clinical version, which contains no extrapolated doses.
+- **Custom simulation (what-if)**: on BLOCK, `複製臨床摘要` only keeps "a custom simulation was run but not included because of a safety gate" and the cause, **with no dose, interval or predicted exposure**; `複製完整 PK 報告` keeps the numbers for review, marked as unreliable. The versioning rules live in `SUMMARY.customSimulationNote()`; the UI must not assemble them itself.
+- **No blank first screen on calculation failure**: invalid input, two-level back-calculation failure and Bayesian non-convergence all go through `SUMMARY.buildFatalSummary()`, listing the reason and a clear next step in layer 1 (layer 4's `<details>` is collapsed by default, so writing it only there would show nothing).
+- **Fail-closed safety boundary**: if `buildClinicalSummary()` doesn't receive a complete verdict (missing `allowCalculation` / `allowDoseRecommendation`), it always treats the case as not computable and gives no dose recommendation.
+- ⚠️ **Unreliable sampling times now block dose recommendations (semantic change in v0.5.0)**: the AUC estimate itself rests on the sampling times; if they can't be trusted, new doses extrapolated from that AUC can't be either. Previously this only lowered confidence to Moderate.
 
-## 後續（未開工）
+## Future Work (not started)
 
-- ~~Crass 2018 肥胖 CLV~~（v0.4.0 已納 Mode 1 CL 模型選項）
-- CRRT / 持續輸注（CI）
-- 給藥史「完整事件列」進階模式（目前為規則方案）
-- L4 外部臨床對照（待真實富取樣 / 商用 Bayesian 資料，見 `docs/bayes-validation.md`）
+- ~~Crass 2018 obesity CLV~~ (added as a Mode 1 CL model option in v0.4.0)
+- CRRT / continuous infusion (CI)
+- Advanced mode with a full event list for dosing history (currently regular regimens)
+- L4 external clinical comparison (awaiting real rich-sampling / commercial Bayesian data; see `docs/bayes-validation.md`)
 
-## 架構
+## Architecture
 
 ```
 vanco-auc-calc/
-├── index.html          # 單頁，三 tab（含 PWA manifest/SW 註冊）
-├── manifest.webmanifest # PWA 安裝資訊（名稱/圖示/主題色）
-├── sw.js               # Service Worker（快取 app shell，離線可用）
-├── icons/              # PWA 圖示（192/512/maskable-512/apple-touch）
+├── index.html          # Single page, three tabs (includes PWA manifest/SW registration)
+├── manifest.webmanifest # PWA install info (name/icons/theme color)
+├── sw.js               # Service worker (caches app shell, offline-capable)
+├── icons/              # PWA icons (192/512/maskable-512/apple-touch)
 ├── js/
-│   ├── constants.js    # 臨床常數（VANCO / CG / GOTI，集中管理）
-│   ├── pk.js           # 一室藥動學純函式（Mode 1/2）
-│   ├── pk.test.js      # sanity test（28/28；含 Crass 肥胖 CL）
-│   ├── bayes.js            # 二室 Bayesian MAP 引擎（Mode 3；含收斂/多起點/NaN 守衛）
-│   ├── bayes.test.js       # sanity test（31/31）
-│   ├── bayes.validation.js # L1 解析解 oracle + L2 模擬-估計（可重跑）
-│   ├── bayes.golden.test.js# golden-master 回歸基準（21/21）
-│   ├── safety.js           # 確定性安全層（eligibility / 濃度守衛 / 擬合守衛 / AUC 分級）
-│   ├── safety.test.js      # 安全行為 C-cases（51/51）
-│   ├── summary.js          # 臨床摘要組裝（純函式：摘要 / 臨床簡版 Plan / 技術完整版）
-│   ├── summary.test.js     # 摘要分層行為 S-cases（83/83）
-│   ├── viewmodel.js        # PK 結果 → 摘要契約的攤平（純函式，三模式各一）
-│   ├── viewmodel.test.js   # 攤平正確性 V-cases（34/34；以真實 PK/BAYES 回傳為輸入）
-│   └── ui.js               # DOM 綁定與渲染
-└── css/style.css           # Noto Sans TC + DM Mono、BEM
+│   ├── constants.js    # Clinical constants (VANCO / CG / GOTI, centrally managed)
+│   ├── pk.js           # One-compartment PK pure functions (Mode 1/2)
+│   ├── pk.test.js      # sanity tests (28/28; includes Crass obesity CL)
+│   ├── bayes.js            # Two-compartment Bayesian MAP engine (Mode 3; convergence/multi-start/NaN guards)
+│   ├── bayes.test.js       # sanity tests (31/31)
+│   ├── bayes.validation.js # L1 analytical oracle + L2 simulation-estimation (rerunnable)
+│   ├── bayes.golden.test.js# golden-master regression baseline (21/21)
+│   ├── safety.js           # Deterministic safety layer (eligibility / level guards / fit guards / AUC grading)
+│   ├── safety.test.js      # Safety behavior C-cases (51/51)
+│   ├── summary.js          # Clinical summary assembly (pure functions: summary / short clinical Plan / full technical version)
+│   ├── summary.test.js     # Summary layering behavior S-cases (83/83)
+│   ├── viewmodel.js        # Flattening PK results → summary contract (pure functions, one per mode)
+│   ├── viewmodel.test.js   # Flattening correctness V-cases (34/34; real PK/BAYES outputs as input)
+│   └── ui.js               # DOM binding and rendering
+└── css/style.css           # Noto Sans TC + DM Mono, BEM
 ```
 
-技術：純 HTML/CSS/JS 無框架（同 bicarb-dosing-calc）。
+Tech: plain HTML/CSS/JS, no framework (same as bicarb-dosing-calc).
 
-## 測試
+## Tests
 
 ```bash
-node js/pk.test.js           # Mode 1/2（一室、Sawchuk-Zaske、Crass 肥胖）    28/28
-node js/bayes.test.js        # Mode 3（收斂旗標、NaN 守衛、穩態 AUC）        31/31
-node js/safety.test.js       # 安全層行為（BLOCK/WARNING 觸發正確性、輸注速率）51/51
-node js/summary.test.js      # 臨床摘要分層（判讀/閘門/兩版文字/格式/邊界）    83/83
-node js/viewmodel.test.js    # PK 結果 → 摘要契約的攤平（三模式）            34/34
-node js/bayes.golden.test.js # golden-master 回歸基準                        21/21
-node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估計（N=1000）
+node js/pk.test.js           # Mode 1/2 (one-compartment, Sawchuk-Zaske, Crass obesity)    28/28
+node js/bayes.test.js        # Mode 3 (convergence flags, NaN guards, steady-state AUC)     31/31
+node js/safety.test.js       # Safety-layer behavior (BLOCK/WARNING triggering, infusion rate) 51/51
+node js/summary.test.js      # Clinical summary layering (interpretation/gates/two text versions/format/edges) 83/83
+node js/viewmodel.test.js    # Flattening PK results → summary contract (three modes)       34/34
+node js/bayes.golden.test.js # golden-master regression baseline                             21/21
+node js/bayes.validation.js  # L1 analytical oracle (hard gate) + L2 simulation-estimation (N=1000)
 ```
 
-> ⚠️ `*.test.js` 多為 **verification（自洽一致性）**。真正的 Mode 3 **validation** 走 `bayes.validation.js`：L1 以**獨立解析解**交叉驗證 RK4（打破 round-trip 循環性），L2 以模擬-估計量測 bias/precision/shrinkage。詳見 `docs/bayes-validation.md`。
+> ⚠️ Most `*.test.js` files are **verification (self-consistency)**. Real Mode 3 **validation** is `bayes.validation.js`: L1 cross-checks RK4 against an **independent analytical solution** (breaking the round-trip circularity), and L2 measures bias/precision/shrinkage by simulation-estimation. See `docs/bayes-validation.md`.
 
-## Validation status
+## Validation Status
 
-| 範圍 | 狀態 |
+| Scope | Status |
 |---|---|
-| Mode 1/2 數值 | 有限數學驗證 + 對 ClinCalc 選定案例交叉核對（見 `docs/validation.md`）|
-| Mode 3 引擎 | **L1 獨立解析解 oracle：PASS**（RK4 vs 封閉解 <1e-6）；**L2 模擬-估計：完成**（N=1000，若 Goti 為真估計器無偏）。見 `docs/bayes-validation.md` |
-| 外部 Bayesian 對照 | 商用工具 / 富取樣 AUC：**未執行** |
-| 前瞻臨床驗證 | **未執行** |
+| Mode 1/2 numerics | Limited mathematical verification + cross-check against selected ClinCalc cases (see `docs/validation.md`) |
+| Mode 3 engine | **L1 independent analytical oracle: PASS** (RK4 vs closed form <1e-6); **L2 simulation-estimation: done** (N=1000; estimator unbiased if Goti is true). See `docs/bayes-validation.md` |
+| External Bayesian comparison | Commercial tools / rich-sampling AUC: **not done** |
+| Prospective clinical validation | **Not done** |
 
-## 參考文獻（References）
+## References
 
-臨床指引與模型：
+Clinical guidelines and models:
 
 - Rybak, M. J., Le, J., Lodise, T. P., Levine, D. P., Bradley, J. S., Liu, C., Mueller, B. A., Pai, M. P., Wong-Beringer, A., Rotschafer, J. C., Rodvold, K. A., Maples, H. D., & Lomaestro, B. M. (2020). Therapeutic monitoring of vancomycin for serious methicillin-resistant *Staphylococcus aureus* infections: A revised consensus guideline and review by the American Society of Health-System Pharmacists, the Infectious Diseases Society of America, the Pediatric Infectious Diseases Society, and the Society of Infectious Diseases Pharmacists. *American Journal of Health-System Pharmacy, 77*(11), 835–864. https://doi.org/10.1093/ajhp/zxaa036
 
@@ -152,7 +154,7 @@ node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估�
 
 - Broeker, A., Nardecchia, M., Klinker, K. P., Derendorf, H., Day, R. O., Marriott, D. J., Carland, J. E., Stocker, S. L., & Wicha, S. G. (2019). Towards precision dosing of vancomycin: A systematic evaluation of pharmacometric models for Bayesian forecasting. *Clinical Microbiology and Infection, 25*(10), 1286.e1–1286.e7. https://doi.org/10.1016/j.cmi.2019.02.029
 
-計算方法（PK/statistics）：
+Calculation methods (PK/statistics):
 
 - Sawchuk, R. J., & Zaske, D. E. (1976). Pharmacokinetics of dosing regimens which utilize multiple intravenous infusions: Gentamicin in burn patients. *Journal of Pharmacokinetics and Biopharmaceutics, 4*(2), 183–195. https://doi.org/10.1007/BF01086153
 
@@ -160,12 +162,12 @@ node js/bayes.validation.js  # L1 解析解 oracle（硬 gate）+ L2 模擬-估�
 
 - Sheiner, L. B., Beal, S., Rosenberg, B., & Marathe, V. V. (1979). Forecasting individual pharmacokinetics. *Clinical Pharmacology & Therapeutics, 26*(3), 294–305. https://doi.org/10.1002/cpt1979263294
 
-給藥速率（來源不一致，本工具採「建議 10–15 mg/min、警示 >17 mg/min」，理由見 `js/constants.js`）：
+Infusion rate (sources disagree; this tool uses "recommend 10–15 mg/min, warn above 17 mg/min"; reasons in `js/constants.js`):
 
-- 萬古黴素仿單（FDA prescribing information）：≤10 mg/min 或至少 60 分鐘輸注。
-- UpToDate／Lexicomp 藥物專論：建議 10–15 mg/min。
-- 部分藥廠仿單與普遍臨床實務：1 g / 60 min（≈16.7 mg/min）。
+- Vancomycin label (FDA prescribing information): ≤10 mg/min or infused over at least 60 minutes.
+- UpToDate / Lexicomp drug monograph: 10–15 mg/min recommended.
+- Some manufacturer labels and common clinical practice: 1 g / 60 min (≈16.7 mg/min).
 
-## 授權
+## License
 
-MIT License（見 `LICENSE`）。臨床內容僅供教育與決策輔助用途。
+MIT License (see `LICENSE`). Clinical content is for education and decision support only.
