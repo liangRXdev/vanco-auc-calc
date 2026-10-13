@@ -25,7 +25,7 @@ GitHub 調研顯示，目前較少見以繁體中文臨床藥師工作流程為�
 ## 功能
 
 **Mode 1｜經驗起始劑量**（尚無血中濃度）
-- Cockcroft-Gault CrCl → 負荷 20–25 mg/kg TBW（cap 3000）
+- Cockcroft-Gault CrCl → 負荷 20–25 mg/kg TBW（cap 3000）；為 Rybak 2020 Rec 10 重症 20–35 mg/kg 範圍內的保守取值
 - 維持：**族群 CL 反推目標 AUC**（滑桿 400–600，預設 500），非 mg/kg
 - ⚠ 為何不用 mg/kg：15–20 mg/kg q8–12h 是 trough 時代法，會系統性衝破 AUC 400–600（實測對應 AUC 770–1500）。改用 `TDD = 目標AUC × 族群CL`，與 Mode 2/ClinCalc 同邏輯。經 ClinCalc 交叉驗證（見 `docs/validation.md`）
 - **CL 模型可選（v0.4.0）**：Matzke（一般族群，預設）或 **Crass 2018（肥胖 pop-PK）**——BMI≥30 建議切換。Crass `CLV = 9.656−0.078·Age−2.009·SCr+1.09·Sex+0.04·TBW^0.75`（一室、TBW allometric）、Vd 依 BMI 分段（0.8/0.52/0.42 L/kg）、負荷採 nomogram（less is more，固定 2500–3000）。計算維持自動對照 Crass Table 2 nomogram（實測 CLV6→1500 q12h 與 nomogram 一致）。UI 依 BMI 即時提示建議模型。

@@ -25,7 +25,7 @@ A GitHub survey found few vancomycin AUC tools built around a Traditional Chines
 ## Features
 
 **Mode 1 | Empirical starting dose** (no serum levels yet)
-- Cockcroft-Gault CrCl → loading dose 20–25 mg/kg TBW (cap 3000)
+- Cockcroft-Gault CrCl → loading dose 20–25 mg/kg TBW (cap 3000); a conservative pick within Rybak 2020 Rec 10's 20–35 mg/kg for critically ill patients
 - Maintenance: **back-calculated from population CL to a target AUC** (slider 400–600, default 500), not mg/kg
 - ⚠ Why not mg/kg: 15–20 mg/kg q8–12h is a trough-era method that systematically overshoots AUC 400–600 (measured correspondence: AUC 770–1500). Instead `TDD = target AUC × population CL`, the same logic as Mode 2/ClinCalc. Cross-validated against ClinCalc (see `docs/validation.md`)
 - **Selectable CL model (v0.4.0)**: Matzke (general population, default) or **Crass 2018 (obesity pop-PK)** — switching is suggested at BMI≥30. Crass `CLV = 9.656−0.078·Age−2.009·SCr+1.09·Sex+0.04·TBW^0.75` (one-compartment, TBW allometric), Vd stratified by BMI (0.8/0.52/0.42 L/kg), loading dose per nomogram (less is more, fixed 2500–3000). The computed maintenance dose is automatically compared against the Crass Table 2 nomogram (measured CLV6 → 1500 q12h, matching the nomogram). The UI suggests a model live based on BMI.

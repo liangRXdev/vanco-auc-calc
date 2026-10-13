@@ -16,10 +16,13 @@ const VANCO = Object.freeze({
   MIC_DEFAULT: 1,             // mg/L，除非 BMD 實測（Rec 6, B-II）
   MIC_ALT_AGENT: 2,           // MIC≥2：傳統劑量難達標，考慮換藥
 
-  // ---- 負荷劑量 (Rybak 2020 Rec 10/12, B-II) ----
+  // ---- 負荷劑量 ----
+  // Rybak 2020 Rec 10 (B-II)：重症／嚴重 MRSA、間歇給藥 → 20–35 mg/kg ABW；Rec 11：cap 3000 mg
+  // 本工具刻意只取 20–25（中點 22.5 mg/kg）：範圍內偏保守的取值，非指引上限；
+  // 25–35 mg/kg 需輸注 ≥2–3 h（≤10 mg/min）。20–25 另為肥胖／CRRT／hybrid dialysis 的建議值。
   LOADING_MGKG_MIN: 20,       // mg/kg actual body weight
-  LOADING_MGKG_MAX: 25,       // mg/kg（重症可至 35，需 ≥2-3h 輸注）
-  LOADING_CAP_MG: 3000,       // 上限
+  LOADING_MGKG_MAX: 25,       // mg/kg（保守取值；指引上限 35）
+  LOADING_CAP_MG: 3000,       // 上限（Rec 11）
   LOADING_VD_BUMP: 1.25,      // 載入期 Vd 較大（vancopk 慣例 +25%）
 
   // ---- 維持劑量：族群 CL 反推 AUC（取代 mg/kg；mg/kg 為 trough 時代法，系統性衝破 AUC）----

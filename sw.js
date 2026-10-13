@@ -4,7 +4,7 @@
  * 版本更新：改動 shell 檔案後，將 CACHE 版本號 +1 以汰換舊快取。
  */
 const PREFIX = 'vanco-auc-calc-';
-const CACHE = `${PREFIX}v10`;
+const CACHE = `${PREFIX}v11`;
 const SHELL = [
   './',
   'index.html',
