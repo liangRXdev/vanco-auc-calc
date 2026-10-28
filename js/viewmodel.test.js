@@ -184,5 +184,19 @@ const smE = SUM.buildClinicalSummary(vE, S.buildSafetyMessages({
 c('V34', smE.recommendation.kind === 'start' && smE.recommendation.regimen === vE.recommend,
   'Mode 1 view-model → 摘要判為「起始建議」');
 
+// ─────────── review 2026-10 #2 ───────────
+console.log('\n--- #2 Mode 1 impractical / SCr 下限標示 ---');
+const eBig = PK.empiricDosing({ age: 25, heightCm: 190, tbw: 200, scr: 0.8, sexMale: true, clModel: 'crass', targetAuc: 600 });
+const vBig = VM.buildEmpiricViewModel({ r: eBig, targetAuc: 600, icu: false, declared: {}, demo: {} });
+c('V40', eBig.maintenanceDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX && vBig.recommend.impractical === true,
+  `Mode 1 單次 ${eBig.maintenanceDose} mg > 2000 → recommend.impractical`);
+c('V41', vE.recommend.impractical === false, 'Mode 1 一般劑量 → impractical false');
+const eLow = PK.empiricDosing({ age: 40, heightCm: 170, tbw: 70, scr: 0.4, sexMale: false });
+const vLow = VM.buildEmpiricViewModel({ r: eLow, targetAuc: 500, icu: false, declared: {}, demo: {} });
+c('V42', vLow.confidenceFactors.some((x) => inText(x, '0.7') && inText(x, '機構政策'))
+  && vLow.technical.lines.some((x) => inText(x, '0.7')),
+  'SCr < 0.7 → 影響因子與技術行標示「已以 0.7 代入（機構政策）」');
+c('V43', !vE.confidenceFactors.some((x) => inText(x, '0.7')), 'SCr ≥ 0.7 → 不標示');
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

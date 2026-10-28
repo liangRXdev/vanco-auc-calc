@@ -377,6 +377,12 @@
         `模型輸出超出合理範圍（${parts.join('、')}）：輸入已超出模型適用範圍，不產生劑量建議；`
         + '請確認輸入，或改以實測濃度（雙點／Bayesian）評估。'));
     }
+    // 日劑量 > 4500 mg（Rec 13 肥胖上限；Crass：極少需 >4500）→ 對所有病人警示，不封鎖
+    if (isFinite(i.dailyMg) && i.dailyMg > VANCO.MAINT_OBESE_CAP_MGDAY) {
+      m.push(msg('DOSE_DAILY_HIGH', 'warn',
+        `建議日劑量 ${Math.round(i.dailyMg)} mg > ${VANCO.MAINT_OBESE_CAP_MGDAY} mg/day：超過一般上限，`
+        + '請確認輸入與模型適用性，並早期強化 AUC 監測（Rybak Rec 13）。'));
+    }
     // Crass 2018 Table 2 footnote a：CLV<0.5 L/h 無建議（原為 warn，2026-10 升級為 BLOCK）
     if (i.model === 'crass' && !(i.cl >= CRASS.CLV_MIN_REC)) {
       m.push(msg('E_CRASS_CLV_LOW', 'block',

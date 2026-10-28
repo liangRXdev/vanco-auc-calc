@@ -66,7 +66,12 @@
     const clModel = input.clModel === 'crass' ? 'crass' : 'matzke';
     const ibw = idealBodyWeight(sexMale, heightCm);
     const cw = crclDosingWeight(tbw, ibw);
-    const crcl = cockcroftGault(age, cw.weight, scr, sexMale);
+    // 機構政策：CG 的 SCr 下限 0.7、CrCl 封頂 150（Crass CLV 式本身仍用實測 SCr）
+    const scrForCrcl = Math.max(scr, VANCO.CG_SCR_FLOOR);
+    const scrFloored = scr < VANCO.CG_SCR_FLOOR;
+    const crclRaw = cockcroftGault(age, cw.weight, scrForCrcl, sexMale);
+    const crcl = Math.min(crclRaw, VANCO.CG_CRCL_CAP);
+    const crclCapped = crclRaw > VANCO.CG_CRCL_CAP;
     const bmi = tbw / Math.pow(heightCm / 100, 2);
 
     let clPop, vdPop, loading, loadingCapped, interval, nomogram = null;
@@ -100,7 +105,7 @@
 
     return {
       clModel, bmi,
-      ibw, crclWeight: cw, crcl,
+      ibw, crclWeight: cw, crcl, crclRaw, crclCapped, scrForCrcl, scrFloored,
       loadingDose: loading,
       loadingCapped,
       clPop, vdPop, targetAuc, tddTarget,
@@ -113,6 +118,24 @@
       nomogram,
       warnings: empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough: pt.trough, tbw, ibw, clModel, bmi, clPop }),
     };
+  }
+
+  /**
+   * Mode 1 輸入範圍（VANCO.RANGES）。範圍外不計算——age>140 會使 CG 為負、
+   * 身高 <120 cm 使 Devine IBW 趨近負值、SCr 極低使 CrCl 爆量。
+   * input: { age, heightCm, tbw, scr }；回傳錯誤訊息陣列（空＝通過）。
+   */
+  function validateEmpiricInput(input) {
+    const i = input || {};
+    const R = VANCO.RANGES;
+    const spec = [['年齡', i.age, R.age], ['身高', i.heightCm, R.height], ['體重', i.tbw, R.tbw], ['SCr', i.scr, R.scr]];
+    const e = [];
+    for (const [label, v, r] of spec) {
+      if (!isFinite(v) || v < r.min || v > r.max) {
+        e.push(`${label} ${isFinite(v) ? v : '—'} ${r.unit} 超出適用範圍（${r.min}–${r.max} ${r.unit}）`);
+      }
+    }
+    return e;
   }
 
   /** 族群 CLvanco（Matzke 1984）：CLvanco(mL/min)=0.69×CrCl+3.66 → 回傳 L/h */
@@ -313,7 +336,7 @@
     idealBodyWeight, adjustedBodyWeight, crclDosingWeight, cockcroftGault,
     roundDose, suggestIntervalByCrCl, suggestIntervalByClv, matzkeClVanco,
     crassClVanco, crassVd, crassLoading, crassNomogramRow,
-    empiricDosing, twoLevelAUC, validateTwoLevel,
+    empiricDosing, validateEmpiricInput, twoLevelAUC, validateTwoLevel,
     steadyStatePeakTrough, simulateRegimen,
   };
 

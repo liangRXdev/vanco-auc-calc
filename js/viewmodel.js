@@ -41,10 +41,12 @@
       recommend: {
         dose: r.maintenanceDose, tau: r.maintenanceInterval, dailyMg: r.maintenanceDailyMg,
         auc24: r.predictedAuc24, peak: r.predictedPeak, trough: r.predictedTrough,
+        impractical: r.maintenanceDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX,
       },
       loading: i.icu ? { dose: r.loadingDose, capped: r.loadingCapped } : null,
       alternatives: [],
       confidenceFactors: list([
+        r.scrFloored && `SCr ${d.scr != null ? d.scr : '—'} 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）`,
         dec.declaredAKI && 'AKI',
         dec.pregnant && '懷孕',
         dec.cysticFibrosis && 'CF',
@@ -55,7 +57,9 @@
         method: crass ? '經驗起始（Crass 2018 肥胖 CL 模型）' : '經驗起始（Matzke 族群 CL）',
         clLabel, loadLabel,
         lines: [
-          `CrCl (Cockcroft-Gault，${r.crclWeight.label} ${f(r.crclWeight.weight, 1)}kg) = ${f(r.crcl, 0)} mL/min`,
+          `CrCl (Cockcroft-Gault，${r.crclWeight.label} ${f(r.crclWeight.weight, 1)}kg) = ${f(r.crcl, 0)} mL/min`
+            + (r.crclCapped ? `（計算值 ${f(r.crclRaw, 0)}，封頂 ${VANCO.CG_CRCL_CAP}）` : ''),
+          r.scrFloored ? `SCr 實測 ${d.scr != null ? d.scr : '—'} < ${VANCO.CG_SCR_FLOOR}：CG 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）` : '',
           `${clLabel} = ${f(r.clPop, 2)} L/h；Vd = ${f(r.vdPop, 1)} L`,
           `IBW ${f(r.ibw, 1)} kg；BMI ${f(r.bmi, 1)} kg/m²`,
           `理想日劑量（目標 AUC ${i.targetAuc} × CL）= ${f(r.tddTarget, 0)} mg/day → 圓整 ${r.maintenanceDose} mg q${r.maintenanceInterval}h（${f(r.maintenanceDailyMg, 0)} mg/day）`,
@@ -63,7 +67,7 @@
           i.icu ? [`${loadLabel} = ${r.loadingDose} mg${r.loadingCapped ? '（已封頂 3000 mg）' : ''}`] : [],
           crass && r.nomogram ? [`Crass nomogram 對照：${r.nomogram.maint} mg q${r.nomogram.tau}h（CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}）`] : [],
           [tInfNote]
-        ),
+        ).filter(Boolean),
       },
     };
   }

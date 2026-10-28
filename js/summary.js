@@ -103,6 +103,7 @@
   const SHORT = {
     E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍，不產生劑量建議。',
     E_CRASS_CLV_LOW: 'Crass CLV < 0.5 L/h：請改用 Matzke + 密集 TDM。',
+    DOSE_DAILY_HIGH: `日劑量 > ${VANCO.MAINT_OBESE_CAP_MGDAY} mg：超過一般上限，請確認並強化監測。`,
     E_PEDIATRIC: '本工具僅適用成人（≥18 歲）。',
     E_CRRT: 'CRRT / SLED 未涵蓋，估計不可信。',
     E_ECMO: 'ECMO：迴路吸附與分布容積改變未建模，可靠度低。',
@@ -126,7 +127,7 @@
   // 限制排序：先 block，再依臨床影響程度排 warn。未列者排最後。
   const LIMIT_ORDER = [
     'E_MODEL_OUT_OF_RANGE', 'E_CRASS_CLV_LOW', 'E_PEDIATRIC', 'E_CRRT', 'B_NONFINITE', 'B_NO_CONVERGE', 'B_UNSTABLE',
-    'AUC_HIGH', 'E_AKI', 'E_SAMPLE_TIMING', 'E_HD', 'DQ_NON_STEADY',
+    'AUC_HIGH', 'DOSE_DAILY_HIGH', 'E_AKI', 'E_SAMPLE_TIMING', 'E_HD', 'DQ_NON_STEADY',
     'C_DIST_PHASE', 'E_DOSE_TIMING', 'B_RESIDUAL', 'B_ETA_CL', 'C_HALFLIFE',
     'AUC_LOW', 'E_ECMO', 'E_PREGNANT', 'E_CF', 'DQ_SINGLE_LEVEL',
   ];

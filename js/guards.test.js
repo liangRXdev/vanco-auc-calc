@@ -52,6 +52,16 @@ m = runMode1({ age: 150, sexMale: true, heightCm: 180, tbw: 80, scr: 1, critical
 c('G06', m.sf.status === 'BLOCK' && has(m.sf, 'E_MODEL_OUT_OF_RANGE') && m.sum.blocked && !hasDose(m.plan),
   'age 150 → CrCl < 0 → 劑量 ≤ 0 → BLOCK，臨床簡版無劑量');
 
+console.log('\n--- #2 Matzke：20 歲男 180cm 80kg ---');
+m = runMode1({ age: 20, sexMale: true, heightCm: 180, tbw: 80, scr: 0.2, criticallyIll: true });
+c('G07', !m.sum.blocked && m.sum.recommendation.regimen.dose === 1000 && m.sum.recommendation.regimen.tau === 8,
+  'SCr 0.2 → SCr 以 0.7 代入、CrCl 封頂 150 → 1000 mg q8h（原 4750 mg q8h）');
+c('G07b', m.sum.confidenceNote.indexOf('0.7') >= 0, '結果頁標示「SCr 已以 0.7 代入（機構政策）」');
+c('G08', PK.validateEmpiricInput({ age: 20, heightCm: 180, tbw: 80, scr: 0.01 }).length > 0,
+  'SCr 0.01 → 輸入範圍錯誤（原 92000 mg q8h）');
+c('G09', PK.validateEmpiricInput({ age: 150, heightCm: 180, tbw: 80, scr: 1 }).length > 0,
+  'age 150 → 輸入範圍錯誤（原 -250 mg）');
+
 // ─────────── Mode 2（同 ui.js a-calc 接線）───────────
 function runMode2(input) {
   const r = PK.twoLevelAUC(input);

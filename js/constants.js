@@ -32,7 +32,12 @@ const VANCO = Object.freeze({
   MATZKE_SLOPE: 0.69,
   MATZKE_INTERCEPT: 3.66,
   EMPIRIC_TINF_H: 1,             // 經驗峰/谷預測假設輸注時長（h）
-  MAINT_OBESE_CAP_MGDAY: 4500,   // 肥胖維持日劑量上限（Rec 13；Crass：極少需 >4500）
+  // Mode 1 Cockcroft-Gault 的 SCr 下限與 CrCl 上限（機構政策，2026-10）：
+  //   SCr < 0.7 mg/dL 時以 0.7 代入（低 SCr 多反映肌肉量少而非腎功能佳，避免高估 CrCl）；
+  //   CrCl 封頂 150 mL/min，與 Mode 3 gotiCrCl（GOTI.CRCL_CAP）一致。
+  CG_SCR_FLOOR: 0.7,             // mg/dL
+  CG_CRCL_CAP: 150,              // mL/min
+  MAINT_OBESE_CAP_MGDAY: 4500,   // 肥胖維持日劑量上限（Rec 13；Crass：極少需 >4500）；2026-10 起對所有病人警示
   MAINT_MONITOR_MGDAY: 4000,     // >4000 mg/day：早期強化 AUC 監測
   MAINT_PERDOSE_PRACTICAL_MAX: 2000, // 單次維持劑量實務上限（超過標記，考慮縮短間隔）
 

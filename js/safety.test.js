@@ -203,6 +203,12 @@ c('C46', v.status === 'BLOCK' && !v.allowCalculation && !v.allowDoseRecommendati
   && has(v, 'E_MODEL_OUT_OF_RANGE') && has(v, 'E_CRASS_CLV_LOW'),
   'buildSafetyMessages 合併 modelOutput 守衛');
 
+// 日劑量 > 4500（Rec 13 肥胖上限）→ 對所有病人警示（不限肥胖），不封鎖
+v = S.checkModelOutput({ model: 'matzke', cl: 6, perDose: 1750, dailyMg: 5250 });
+c('C47', v.status === 'WARNING' && v.allowDoseRecommendation && has(v, 'DOSE_DAILY_HIGH'), '日劑量 5250 → WARNING（所有病人）');
+v = S.checkModelOutput({ model: 'two-level', cl: 6, perDose: 1500, dailyMg: 4500 });
+c('C47b', v.status === 'OK' && !has(v, 'DOSE_DAILY_HIGH'), '日劑量 = 4500（門檻）→ 不警示');
+
 // ─────────── merge / buildSafetyMessages ───────────
 console.log('\n--- 合併 ---');
 v = S.buildSafetyMessages({ eligibility: { age: 60, dialysis: true }, auc: 700 });

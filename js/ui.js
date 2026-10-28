@@ -181,6 +181,14 @@
       alertResult('e', '本工具僅適用成人（≥18 歲）。小兒萬古黴素劑量方式不同（60–80 mg/kg/day，Cockcroft-Gault 亦不適用），請另參小兒指引。');
       return;
     }
+    // 輸入範圍（VANCO.RANGES）：範圍外不計算（age>140 使 CG 為負、身高過低使 IBW 為負、SCr 極低使 CrCl 爆量）
+    const rangeErr = PK.validateEmpiricInput({ age: num('e-age'), heightCm: num('e-height'), tbw: num('e-tbw'), scr: num('e-scr') });
+    if (rangeErr.length) {
+      const idOf = { '年齡': 'e-age', '身高': 'e-height', '體重': 'e-tbw', 'SCr': 'e-scr' };
+      markError(rangeErr.map((m) => idOf[m.split(' ')[0]]).filter(Boolean), true);
+      alertResult('e', rangeErr, ['請確認單位與數值後重新計算；範圍外的病人不適用本工具的族群模型。']);
+      return;
+    }
 
     const targetAuc = num('e-target') || VANCO.AUC_TARGET_DEFAULT;
     const clModel = document.querySelector('input[name="e-clmodel"]:checked').value;
@@ -230,7 +238,8 @@
     // 第三層：進階 PK。模型輸出被 safety 擋下時只列輸入推導值，不列任何劑量。
     const okE = sfE.allowCalculation;
     $('e-output').innerHTML =
-      metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0), 'mL/min', true) +
+      metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0) + (r.crclCapped ? '（封頂）' : ''), 'mL/min', true) +
+      (r.scrFloored ? metric('CG 用 SCr', fmt(r.scrForCrcl, 1), 'mg/dL（已以 0.7 代入，機構政策）') : '') +
       metric('BMI', fmt(r.bmi, 1), 'kg/m²') +
       metric(clLabel, fmt(r.clPop, 2), 'L/h') +
       metric('IBW / CrCl 用體重', `${fmt(r.ibw, 1)} / ${fmt(r.crclWeight.weight, 1)}`, 'kg') +
@@ -253,6 +262,8 @@
     if (crass) extra.push({ level: 'info', msg: `肥胖 CL 模型（Crass 2018）：維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）；CrCl 體重採「${r.crclWeight.label}」。` });
     else extra.push({ level: 'info', msg: `CrCl 體重採「${r.crclWeight.label}」；負荷 mg/kg 用 TBW，維持以族群 CL 反推目標 AUC。` });
     if (r.loadingCapped) extra.push({ level: 'info', msg: '✱ 負荷已封頂於 3000 mg。' });
+    if (r.scrFloored) extra.push({ level: 'info', msg: `SCr ${num('e-scr')} < ${VANCO.CG_SCR_FLOOR} mg/dL：Cockcroft-Gault 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）。` });
+    if (r.crclCapped) extra.push({ level: 'info', msg: `CrCl 計算值 ${fmt(r.crclRaw, 0)} 已封頂 ${VANCO.CG_CRCL_CAP} mL/min（與 Mode 3 一致）。` });
     renderWarnings($('e-warnings'), extra.concat(safetyWarnings(sfE), r.warnings));
 
     show('e');
