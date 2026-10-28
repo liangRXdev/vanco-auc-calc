@@ -84,13 +84,35 @@ function runMode2(input, steadyStateConfirmed) {
   return { r, recOpt, sf, view, sum, plan: SUM.buildClinicalPlan(sum) };
 }
 
-console.log('\n--- #1 Mode 2：CL ≈ 0.22 L/h ---');
-m = runMode2({ dose: 100, tau: 24, tInf: 1, c1: 20, t1: 3, c2: 18, t2: 23, mic: 1 });
-c('G10', m.r.cl < 0.25 && m.recOpt.doseMg === 0, '前置：CL ≈ 0.22、同間隔建議劑量圓整為 0 mg');
-c('G11', m.sf.status === 'BLOCK' && has(m.sf, 'E_MODEL_OUT_OF_RANGE'), '建議劑量 0 → safety BLOCK');
-c('G12', m.sum.blocked && !hasDose(m.plan.split('建議：')[1]),
-  '臨床簡版「建議」段不帶劑量（現行方案行除外）');
+console.log('\n--- #1 Mode 2：CL ≈ 0.22 L/h（2026-10 裁決：只擋劑量、保留量測 AUC）---');
+m = runMode2({ dose: 50, tau: 12, tInf: 1, c1: 20, t1: 2, c2: 18.5, t2: 11.5, mic: 1 });
+c('G10', m.r.cl < 0.25 && m.recOpt.doseMg === 0, '前置：現行 τ 12h、CL ≈ 0.22、主推薦圓整為 0 mg');
+c('G11', m.sf.status !== 'BLOCK' && m.sf.allowCalculation && !m.sf.allowDoseRecommendation
+  && has(m.sf, 'E_DOSE_TOO_LOW') && !has(m.sf, 'E_MODEL_OUT_OF_RANGE'),
+  '建議劑量 0 → 只擋劑量建議（非 BLOCK）');
+c('G12', m.sum.blocked && m.sum.recommendation.regimen === null && !hasDose(m.plan.split('建議：')[1]),
+  '臨床摘要／簡版「建議」段不帶劑量（現行方案行除外）');
+c('G12b', m.sum.canCalculate && isFinite(m.sum.current.auc24) && Math.abs(m.sum.current.auc24 - m.r.auc24) < 1e-9
+  && m.sum.status.key === 'ok' && m.plan.indexOf(`${Math.round(m.r.auc24)} mg·h/L`) >= 0,
+  '保留量測 AUC24 與判讀（摘要與臨床簡版）');
+c('G12c', m.sum.blockedReasons.some((x) => x.indexOf('現行間隔下建議劑量過低而無法給出') >= 0
+  && x.indexOf('延長間隔') >= 0 && x.indexOf('Mode 3') >= 0),
+  '劑量區說明「現行間隔下建議劑量過低而無法給出；請依臨床判斷延長間隔或改用 Mode 3」');
+c('G12d', m.sum.recommendation.kind === 'none' && m.sum.recommendation.regimen === null,
+  '不自動改推薦其他間隔');
 c('G13', m.view.alternatives.every((a) => a.dose > 0), '劑量為 0 的間隔列不列入替代方案');
+
+console.log('\n--- Mode 2：現行 τ 48h、CL ≈ 0.22（主推薦不為 0）---');
+m = runMode2({ dose: 250, tau: 48, tInf: 1, c1: 25, t1: 2, c2: 22, t2: 47, mic: 1 });
+c('G14', m.recOpt.doseMg === 250 && !has(m.sf, 'E_DOSE_TOO_LOW') && !has(m.sf, 'E_MODEL_OUT_OF_RANGE')
+  && !m.sum.blocked && m.sum.recommendation.regimen.tau === 48,
+  'τ 48h 主推薦 250 mg q48h → 不觸發劑量守衛、正常給建議');
+c('G15', isFinite(m.sum.current.auc24), '量測 AUC 照常顯示');
+
+console.log('\n--- Mode 2：CL ≤ 0 合成案例仍 BLOCK ---');
+const vNeg = S.buildSafetyMessages({ mode: 2, eligibility: {}, dataQuality: { input: { steadyStateConfirmed: true }, mode: 2 },
+  auc: 400, modelOutput: { model: 'two-level', cl: -0.1, perDose: 0, dailyMg: 0 } });
+c('G16', vNeg.status === 'BLOCK' && !vNeg.allowCalculation && has(vNeg, 'E_MODEL_OUT_OF_RANGE'), 'CL ≤ 0 → BLOCK');
 
 console.log('\n--- #3 Mode 2 穩態前提 ---');
 const STD = { dose: 1000, tau: 12, tInf: 1, c1: 20, t1: 3, c2: 7, t2: 11.5, mic: 1 };

@@ -374,6 +374,9 @@
    * 極低 CL 時劑量圓整為 0）。此類輸出不得以「建議起始 -2000 mg」形式出現在摘要。
    * input: { model: 'matzke'|'crass'|'two-level'|'bayes', cl (L/h), perDose (mg), dailyMg (mg/day) }
    *   perDose / dailyMg 為 undefined 時不檢查（呼叫端未產生建議劑量）。
+   * Mode 2（'two-level'）例外（2026-10 裁決，PR #4 待決 4）：CL 為有限正值、僅建議劑量
+   *   取整後 ≤ 0（極低 CL、現行間隔下劑量過低）時，量測 AUC 仍有效 → 改發 warn 級
+   *   E_DOSE_TOO_LOW、只擋劑量建議；CL ≤ 0／非有限或劑量非有限仍 BLOCK。
    */
   function checkModelOutput(input) {
     const i = input || {};
@@ -383,7 +386,17 @@
     if (bad(i.cl)) parts.push(`CL ${isFinite(i.cl) ? i.cl.toFixed(2) + ' L/h' : '非有限值'}`);
     if (i.perDose !== undefined && bad(i.perDose)) parts.push(`單次劑量 ${isFinite(i.perDose) ? i.perDose + ' mg' : '非有限值'}`);
     if (i.dailyMg !== undefined && bad(i.dailyMg)) parts.push(`日劑量 ${isFinite(i.dailyMg) ? Math.round(i.dailyMg) + ' mg' : '非有限值'}`);
-    if (parts.length) {
+    const clOk = !bad(i.cl);
+    const finiteOrUnset = (x) => x === undefined || isFinite(x);
+    const twoLevelDoseOnly = i.model === 'two-level' && clOk && parts.length > 0
+      && finiteOrUnset(i.perDose) && finiteOrUnset(i.dailyMg);
+    let allowDoseRecommendation = true;
+    if (twoLevelDoseOnly) {
+      allowDoseRecommendation = false;
+      m.push(msg('E_DOSE_TOO_LOW', 'warn',
+        `現行間隔下建議劑量過低而無法給出（${parts.join('、')}；CL ${i.cl.toFixed(2)} L/h）：`
+        + '量測 AUC 仍照常呈現；請依臨床判斷延長間隔或改用 Mode 3（Bayesian）。'));
+    } else if (parts.length) {
       m.push(msg('E_MODEL_OUT_OF_RANGE', 'block',
         `模型輸出超出合理範圍（${parts.join('、')}）：輸入已超出模型適用範圍，不產生劑量建議；`
         + '請確認輸入，或改以實測濃度（雙點／Bayesian）評估。'));
@@ -400,7 +413,7 @@
         `估計 CLV ${isFinite(i.cl) ? i.cl.toFixed(2) : '—'} < ${CRASS.CLV_MIN_REC} L/h：超出 Crass 建模族群，無 nomogram 建議。`
         + '請改用 Matzke 族群 CL 模型 + 密集 TDM（及早雙點或 Bayesian）。'));
     }
-    return verdict(m, {});
+    return verdict(m, { allowDoseRecommendation });
   }
 
   // ---------- 聚合入口 ----------

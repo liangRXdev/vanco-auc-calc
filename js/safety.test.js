@@ -185,9 +185,22 @@ c('C41b', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'CL = 0 → BL
 v = S.checkModelOutput({ model: 'matzke', cl: NaN, perDose: 1000, dailyMg: 2000 });
 c('C42', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'CL 非有限 → BLOCK');
 v = S.checkModelOutput({ model: 'two-level', cl: 3, perDose: 0, dailyMg: 0 });
-c('C43', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '單次劑量 0 → BLOCK');
+c('C43', v.status === 'WARNING' && v.allowCalculation && !v.allowDoseRecommendation
+  && has(v, 'E_DOSE_TOO_LOW') && !has(v, 'E_MODEL_OUT_OF_RANGE'),
+  'Mode 2 單次劑量 0、CL 有限正值 → 只擋劑量（warn），保留計算');
 v = S.checkModelOutput({ model: 'two-level', cl: 3, perDose: 500, dailyMg: -1 });
-c('C43b', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '日劑量 ≤ 0 → BLOCK');
+c('C43b', v.status === 'WARNING' && !v.allowDoseRecommendation && has(v, 'E_DOSE_TOO_LOW'),
+  'Mode 2 日劑量 ≤ 0、CL 有限正值 → 只擋劑量（warn）');
+v = S.checkModelOutput({ model: 'two-level', cl: -0.2, perDose: 0, dailyMg: 0 });
+c('C43c', v.status === 'BLOCK' && !v.allowCalculation && has(v, 'E_MODEL_OUT_OF_RANGE'), 'Mode 2 CL ≤ 0 → 仍 BLOCK');
+v = S.checkModelOutput({ model: 'two-level', cl: NaN, perDose: 0, dailyMg: 0 });
+c('C43d', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'Mode 2 CL 非有限 → 仍 BLOCK');
+v = S.checkModelOutput({ model: 'two-level', cl: 0.2, perDose: NaN, dailyMg: NaN });
+c('C43e', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'Mode 2 劑量非有限（無主推薦列）→ 仍 BLOCK');
+v = S.checkModelOutput({ model: 'matzke', cl: 3, perDose: 0, dailyMg: 0 });
+c('C43f', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE') && !has(v, 'E_DOSE_TOO_LOW'), 'Mode 1 劑量 0 → 行為不變（BLOCK）');
+v = S.checkModelOutput({ model: 'bayes', cl: 3, perDose: 0, dailyMg: 0 });
+c('C43g', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE') && !has(v, 'E_DOSE_TOO_LOW'), 'Mode 3 劑量 0 → 行為不變（BLOCK）');
 v = S.checkModelOutput({ model: 'bayes', cl: 3, perDose: Infinity, dailyMg: 1000 });
 c('C44', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '劑量非有限 → BLOCK');
 v = S.checkModelOutput({ model: 'crass', cl: 0.3, perDose: 250, dailyMg: 250 });

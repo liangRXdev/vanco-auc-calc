@@ -80,6 +80,7 @@
   const GATE_LABEL = {
     E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍（CL 或劑量 ≤ 0／非有限值）',
     E_CRASS_CLV_LOW: 'Crass 估計 CLV < 0.5 L/h，超出建模族群（改用 Matzke + 密集 TDM）',
+    E_DOSE_TOO_LOW: '現行間隔下建議劑量過低而無法給出；請依臨床判斷延長間隔或改用 Mode 3',
     E_PEDIATRIC: '年齡超出適用範圍（僅成人）',
     E_CRRT: 'CRRT / SLED 未涵蓋',
     E_HD: '血液透析（模型未建模透析清除與 post-HD 回彈）',
@@ -104,6 +105,8 @@
   const SHORT = {
     E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍，不產生劑量建議。',
     E_CRASS_CLV_LOW: 'Crass CLV < 0.5 L/h：請改用 Matzke + 密集 TDM。',
+    // 原因段已有完整說明（GATE_LABEL），限制區改述成因，避免同屏重複同一句
+    E_DOSE_TOO_LOW: 'CL 極低：現行間隔的建議劑量低於 250 mg 給藥增量。',
     DOSE_DAILY_HIGH: `日劑量 > ${VANCO.MAINT_OBESE_CAP_MGDAY} mg：超過一般上限，請確認並強化監測。`,
     E_PEDIATRIC: '本工具僅適用成人（≥18 歲）。',
     E_CRRT: 'CRRT / SLED 未涵蓋，估計不可信。',
@@ -128,7 +131,7 @@
   };
   // 限制排序：先 block，再依臨床影響程度排 warn。未列者排最後。
   const LIMIT_ORDER = [
-    'E_MODEL_OUT_OF_RANGE', 'E_CRASS_CLV_LOW', 'E_PEDIATRIC', 'E_CRRT', 'B_NONFINITE', 'B_NO_CONVERGE', 'B_UNSTABLE',
+    'E_MODEL_OUT_OF_RANGE', 'E_CRASS_CLV_LOW', 'E_PEDIATRIC', 'E_DOSE_TOO_LOW', 'E_CRRT', 'B_NONFINITE', 'B_NO_CONVERGE', 'B_UNSTABLE',
     'AUC_HIGH', 'DOSE_DAILY_HIGH', 'E_AKI', 'E_SAMPLE_TIMING', 'DQ_M2_NOT_STEADY', 'E_HD', 'DQ_NON_STEADY',
     'C_DIST_PHASE', 'E_DOSE_TIMING', 'B_RESIDUAL', 'B_ETA_CL', 'C_HALFLIFE',
     'AUC_LOW', 'E_ECMO', 'E_PREGNANT', 'E_CF', 'DQ_SINGLE_LEVEL',
@@ -179,11 +182,13 @@
       singleLevel: has(sf, 'DQ_SINGLE_LEVEL'),
       m2NotSteady: has(sf, 'DQ_M2_NOT_STEADY'),
       crassLow: has(sf, 'E_CRASS_CLV_LOW'),
+      doseTooLow: has(sf, 'E_DOSE_TOO_LOW'),
     };
     const out = [];
     if (!canRecommend) {
       out.push('先確認腎功能趨勢、給藥紀錄與採血時間，再重新計算。');
-      if (f.crassLow) out.push('改用 Matzke 族群 CL 模型重新計算，並及早採濃度（雙點或 Bayesian）密集 TDM。');
+      if (f.doseTooLow) out.push('現行間隔下劑量過低：請依臨床判斷延長間隔，或改用 Mode 3（Bayesian）評估。');
+      else if (f.crassLow) out.push('改用 Matzke 族群 CL 模型重新計算，並及早採濃度（雙點或 Bayesian）密集 TDM。');
       else if (f.m2NotSteady) out.push('未達穩態：改用 Mode 3（Bayesian）評估，或於同一方案 ≥4 劑後重採雙點。');
       else if (f.declaredAKI) out.push('腎功能正在變化時，應提早重採濃度，不等待穩態。');
       else out.push('待資料可靠後重新取樣，再評估是否調整。');
