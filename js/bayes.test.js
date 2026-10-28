@@ -141,5 +141,20 @@ ok('nelderMead 回傳 iters', typeof nmEasy.iters === 'number');
 const oob = BAYES.simulateConc([{ time: 0, dose: 1000, tInf: 1 }], [-5], { cl: 4.5, vc: 58.4, vp: 38.4, q: 6.5 });
 ok('simulateConc 未捕捉時刻回 NaN（非 undefined）', Number.isNaN(oob[0]));
 
+// ---------- review 2026-10 #6：Mode 3 主計算時序驗證 ----------
+console.log('\n--- #6 Mode 3 時序驗證 ---');
+const T = (o) => BAYES.validateRegimenTiming(Object.assign({ tau: 12, tInf: 1, nDose: 4, levels: [{ conc: 15, tRel: 11.5 }] }, o));
+ok('合理時序 → 無錯誤', T({}).length === 0);
+ok('tInf = τ → 錯誤（須 tInf < τ）', T({ tInf: 12 }).some((m) => m.includes('輸注時長') && m.includes('12')));
+ok('tInf > τ → 錯誤', T({ tInf: 13 }).length === 1);
+ok('tRel < 0 → 錯誤', T({ levels: [{ conc: 15, tRel: -1 }] }).some((m) => m.includes('濃度 1') && m.includes('-1')));
+ok('tRel > τ → 錯誤（應已再給一劑）', T({ levels: [{ conc: 15, tRel: 13 }] }).some((m) => m.includes('濃度 1') && m.includes('13')));
+ok('tRel = τ（邊界）→ 可', T({ levels: [{ conc: 15, tRel: 12 }] }).length === 0);
+ok('tRel = 0（邊界）→ 可', T({ levels: [{ conc: 15, tRel: 0 }] }).length === 0);
+ok('第 2 點時刻超出 → 指名濃度 2', T({ levels: [{ conc: 25, tRel: 2 }, { conc: 15, tRel: 20 }] }).some((m) => m.includes('濃度 2')));
+ok('N = 2.5 → 錯誤（須正整數）', T({ nDose: 2.5 }).some((m) => m.includes('劑數') && m.includes('2.5')));
+ok('N = 0 → 錯誤', T({ nDose: 0 }).some((m) => m.includes('劑數')));
+ok('N = 1 → 可', T({ nDose: 1 }).length === 0);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

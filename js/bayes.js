@@ -297,9 +297,34 @@
     return { peak, trough, auc24: dose * (24 / tau) / pk.cl };
   }
 
+  // ---------- 輸入時序驗證（Mode 3 主計算）----------
+  /**
+   * 給藥史在 UI 以「N 劑於 0,τ,…,(N−1)τ、濃度時刻＝距最近一劑起始」重建；
+   * 下列前提不成立時重建出的給藥史與實際不符，MAP 會給出貌似合理但錯誤的估計。
+   * input: { tau, tInf, nDose, levels: [{ conc, tRel }] }；回傳具體錯誤訊息陣列（空＝通過）。
+   */
+  function validateRegimenTiming(input) {
+    const i = input || {};
+    const e = [];
+    if (!(i.tInf < i.tau)) {
+      e.push(`輸注時長 ${i.tInf}h 須短於給藥間隔 τ ${i.tau}h（否則劑次重疊／為持續輸注，本工具未涵蓋）。`);
+    }
+    if (!(Number.isInteger(i.nDose) && i.nDose >= 1)) {
+      e.push(`已給劑數須為正整數（目前輸入 ${i.nDose}）。`);
+    }
+    (i.levels || []).forEach((l, k) => {
+      if (!(l.tRel >= 0 && l.tRel <= i.tau)) {
+        e.push(`濃度 ${k + 1} 的時刻 ${l.tRel}h 須介於 0 與 τ ${i.tau}h 之間`
+          + '（時刻＝距最近一劑輸注開始；超過 τ 表示其後應已再給一劑，請調整劑數或時刻）。');
+      }
+    });
+    return e;
+  }
+
   const api = {
     gotiCrCl, priorTypicalValues, simulateConc,
     residualSD, objective, nelderMead, bayesianMAP, steadyStateExposure,
+    validateRegimenTiming,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -532,7 +532,13 @@
     });
     if (!levels.length || levelBad) { alertBayes('請至少填入 1 點有效濃度（濃度 > 0、時刻 ≥ 0）。'); return; }
 
-    const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = Math.round(num('b-ndose'));
+    const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = num('b-ndose');
+    // 時序前提（tInf < τ、0 ≤ tRel ≤ τ、N 為正整數）不成立 → 重建的給藥史與實際不符，不計算
+    const timingErr = BAYES.validateRegimenTiming({ tau, tInf, nDose: N, levels });
+    if (timingErr.length) {
+      alertBayes(timingErr, ['請確認給藥間隔、輸注時長、已給劑數與採血時刻（距最近一劑起始）後重新計算。']);
+      return;
+    }
     const sexMale = document.querySelector('input[name="b-sex"]:checked').value === 'M';
     const dialysis = $('b-dial').checked;
     // 臨床聲明（無法自動偵測，由使用者勾選）
