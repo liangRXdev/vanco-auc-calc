@@ -283,8 +283,7 @@
     if (crass) {
       if (bmi < CRASS.BMI_OBESE)
         w.push({ level: 'warn', msg: `BMI ${bmi.toFixed(1)} < 30：Crass 模型建立於肥胖族群，非肥胖者請改用 Matzke。` });
-      if (clPop < CRASS.CLV_MIN_REC)
-        w.push({ level: 'warn', msg: `估計 CLV ${clPop.toFixed(2)} < 0.5 L/h：超出 Crass 建模族群，無 nomogram 建議，須臨床判斷 + 密集 TDM。` });
+      // CLV < 0.5 L/h 由 safety.checkModelOutput 以 E_CRASS_CLV_LOW 封鎖（不在此重複警示）
       w.push({ level: 'info', msg: `肥胖 CL 模型：Crass 2018（CLV=age/SCr/sex/TBW^0.75，SCr 須 IDMS）；維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）。` });
     } else if (obese) {
       w.push({ level: 'warn', msg: `肥胖患者：Matzke 族群 CL 可能偏差（一般族群回歸）；建議切換「Crass 肥胖 CL 模型」，或儘早雙點 TDM。` });

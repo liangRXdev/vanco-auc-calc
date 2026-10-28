@@ -25,6 +25,7 @@
   const C = (typeof require !== 'undefined') ? require('./constants.js') : root;
   const VANCO = C.VANCO;
   const GOTI = C.GOTI;
+  const CRASS = C.CRASS;
 
   const SEV_RANK = { info: 0, warn: 1, block: 2 };
   const CONF_RANK = { Invalid: 0, Low: 1, Moderate: 2, High: 3 };
@@ -356,11 +357,41 @@
     ];
   }
 
+  // ---------- B5 模型輸出守衛（所有模式）----------
+  /**
+   * 模型外推可能產生非物理輸出（Crass 線性式於高齡高 SCr 得負 CLV、CG 於 age>140 得負 CrCl、
+   * 極低 CL 時劑量圓整為 0）。此類輸出不得以「建議起始 -2000 mg」形式出現在摘要。
+   * input: { model: 'matzke'|'crass'|'two-level'|'bayes', cl (L/h), perDose (mg), dailyMg (mg/day) }
+   *   perDose / dailyMg 為 undefined 時不檢查（呼叫端未產生建議劑量）。
+   */
+  function checkModelOutput(input) {
+    const i = input || {};
+    const m = [];
+    const bad = (x) => !isFinite(x) || x <= 0;
+    const parts = [];
+    if (bad(i.cl)) parts.push(`CL ${isFinite(i.cl) ? i.cl.toFixed(2) + ' L/h' : '非有限值'}`);
+    if (i.perDose !== undefined && bad(i.perDose)) parts.push(`單次劑量 ${isFinite(i.perDose) ? i.perDose + ' mg' : '非有限值'}`);
+    if (i.dailyMg !== undefined && bad(i.dailyMg)) parts.push(`日劑量 ${isFinite(i.dailyMg) ? Math.round(i.dailyMg) + ' mg' : '非有限值'}`);
+    if (parts.length) {
+      m.push(msg('E_MODEL_OUT_OF_RANGE', 'block',
+        `模型輸出超出合理範圍（${parts.join('、')}）：輸入已超出模型適用範圍，不產生劑量建議；`
+        + '請確認輸入，或改以實測濃度（雙點／Bayesian）評估。'));
+    }
+    // Crass 2018 Table 2 footnote a：CLV<0.5 L/h 無建議（原為 warn，2026-10 升級為 BLOCK）
+    if (i.model === 'crass' && !(i.cl >= CRASS.CLV_MIN_REC)) {
+      m.push(msg('E_CRASS_CLV_LOW', 'block',
+        `估計 CLV ${isFinite(i.cl) ? i.cl.toFixed(2) : '—'} < ${CRASS.CLV_MIN_REC} L/h：超出 Crass 建模族群，無 nomogram 建議。`
+        + '請改用 Matzke 族群 CL 模型 + 密集 TDM（及早雙點或 Bayesian）。'));
+    }
+    return verdict(m, {});
+  }
+
   // ---------- 聚合入口 ----------
   /**
    * 依 context 呼叫相關子檢查並合併。context 欄位皆 optional：
    *   { mode(1|2|3，傳給 eligibility 決定 AKI 處置), eligibility,
-   *     dataQuality:{input,mode}, concentrations:{levels,dosing,pk}, bayesFit, auc }
+   *     dataQuality:{input,mode}, concentrations:{levels,dosing,pk}, bayesFit, auc,
+   *     modelOutput:{model,cl,perDose,dailyMg} }
    */
   function buildSafetyMessages(context) {
     const c = context || {};
@@ -370,6 +401,7 @@
     if (c.concentrations) parts.push(validateConcentrations(c.concentrations.levels, c.concentrations.dosing, c.concentrations.pk));
     if (c.bayesFit) parts.push(validateBayesianFit(c.bayesFit));
     if (c.auc != null) parts.push(classifyAUC(c.auc));
+    if (c.modelOutput) parts.push(checkModelOutput(c.modelOutput));
     return merge.apply(null, parts);
   }
 
@@ -378,6 +410,7 @@
     validateConcentrations, validateBayesianFit,
     classifyAUC, auc600Management,
     requiredInfusionTimeH, advisedInfusionRangeH, checkInfusionRate,
+    checkModelOutput,
     buildSafetyMessages, merge, verdict,
   };
 

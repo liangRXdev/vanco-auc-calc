@@ -83,12 +83,13 @@
       currentExposure: { auc24: r.auc24, peak: r.cMaxTrue, trough: r.cMinTrue },
       auc24: r.auc24, mic: x.mic, aucOverMic: r.aucOverMic,
       targetAuc: (VANCO.AUC_TARGET_MIN + VANCO.AUC_TARGET_MAX) / 2,
-      recommend: {
+      recommend: rec ? {
         dose: rec.doseMg, tau: rec.intervalH, dailyMg: rec.dailyMg,
         auc24: rec.projectedAuc24, peak: rec.projectedPeak, trough: rec.projectedTrough,
         impractical: rec.impractical,
-      },
-      alternatives: r.intervalOptions.map((o) => ({
+      } : null,
+      // 圓整後劑量 ≤ 0 的間隔（極低 CL）不可作為任何建議或替代方案
+      alternatives: r.intervalOptions.filter((o) => o.doseMg > 0).map((o) => ({
         dose: o.doseMg, tau: o.intervalH, dailyMg: o.dailyMg,
         auc24: o.projectedAuc24, peak: o.projectedPeak, trough: o.projectedTrough,
         impractical: o.impractical, isCurrent: o.intervalH === x.tau,
