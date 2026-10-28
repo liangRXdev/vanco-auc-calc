@@ -106,7 +106,7 @@
     E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍，不產生劑量建議。',
     E_CRASS_CLV_LOW: 'Crass CLV < 0.5 L/h：請改用 Matzke + 密集 TDM。',
     // 原因段已有完整說明（GATE_LABEL），限制區改述成因，避免同屏重複同一句
-    E_DOSE_TOO_LOW: 'CL 極低：現行間隔的建議劑量低於 250 mg 給藥增量。',
+    E_DOSE_TOO_LOW: 'CL 極低：現行間隔所需劑量低於最小給藥增量。',
     DOSE_DAILY_HIGH: `日劑量 > ${VANCO.MAINT_OBESE_CAP_MGDAY} mg：超過一般上限，請確認並強化監測。`,
     E_PEDIATRIC: '本工具僅適用成人（≥18 歲）。',
     E_CRRT: 'CRRT / SLED 未涵蓋，估計不可信。',
