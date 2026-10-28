@@ -78,11 +78,14 @@
   // 這些碼即 safety.js 中會使 allowDoseRecommendation=false 的來源。
   // 本表只做「顯示用命名」，不重新判定閘門開關——開關一律讀 verdict。
   const GATE_LABEL = {
+    E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍（CL 或劑量 ≤ 0／非有限值）',
+    E_CRASS_CLV_LOW: 'Crass 估計 CLV < 0.5 L/h，超出建模族群（改用 Matzke + 密集 TDM）',
     E_PEDIATRIC: '年齡超出適用範圍（僅成人）',
     E_CRRT: 'CRRT / SLED 未涵蓋',
     E_HD: '血液透析（模型未建模透析清除與 post-HD 回彈）',
     E_AKI: '腎功能不穩定 / AKI',
     E_SAMPLE_TIMING: '採血時間不可靠',
+    DQ_M2_NOT_STEADY: '未確認已達穩態（雙點法需同一方案 ≥4 劑）',
     AUC_HIGH: 'AUC 高於目標，須先處置高暴露',
     AUC_NONFINITE: 'AUC 無法計算',
     B_NONFINITE: 'Bayesian 模型輸出非有限值',
@@ -99,6 +102,9 @@
   // ---------- 限制短句（code → 1 行）----------
   // 摘要每段最多 1–3 行（§八.2），故對長訊息給短版；未列者退回原文第一句。
   const SHORT = {
+    E_MODEL_OUT_OF_RANGE: '模型輸出超出合理範圍，不產生劑量建議。',
+    E_CRASS_CLV_LOW: 'Crass CLV < 0.5 L/h：請改用 Matzke + 密集 TDM。',
+    DOSE_DAILY_HIGH: `日劑量 > ${VANCO.MAINT_OBESE_CAP_MGDAY} mg：超過一般上限，請確認並強化監測。`,
     E_PEDIATRIC: '本工具僅適用成人（≥18 歲）。',
     E_CRRT: 'CRRT / SLED 未涵蓋，估計不可信。',
     E_ECMO: 'ECMO：迴路吸附與分布容積改變未建模，可靠度低。',
@@ -109,6 +115,7 @@
     E_PREGNANT: '懷孕：族群 PK 未必適用，請加強監測。',
     E_CF: '囊狀纖維化：CL 常高於一般族群，本先驗可能低估需求。',
     DQ_NON_STEADY: '非穩態取樣：AUC 為穩態投影，非當日實際暴露。',
+    DQ_M2_NOT_STEADY: '未確認穩態：雙點法 AUC 外推不可靠，建議改用 Mode 3。',
     DQ_SINGLE_LEVEL: '單一濃度：Vc/Vp 主要仰賴族群先驗。',
     DQ_EMPIRIC: '經驗起始：無實測濃度，全依族群 PK 推估。',
     AUC_HIGH: 'AUC 高於目標：腎毒性風險上升，先處置高暴露。',
@@ -121,8 +128,8 @@
   };
   // 限制排序：先 block，再依臨床影響程度排 warn。未列者排最後。
   const LIMIT_ORDER = [
-    'E_PEDIATRIC', 'E_CRRT', 'B_NONFINITE', 'B_NO_CONVERGE', 'B_UNSTABLE',
-    'AUC_HIGH', 'E_AKI', 'E_SAMPLE_TIMING', 'E_HD', 'DQ_NON_STEADY',
+    'E_MODEL_OUT_OF_RANGE', 'E_CRASS_CLV_LOW', 'E_PEDIATRIC', 'E_CRRT', 'B_NONFINITE', 'B_NO_CONVERGE', 'B_UNSTABLE',
+    'AUC_HIGH', 'DOSE_DAILY_HIGH', 'E_AKI', 'E_SAMPLE_TIMING', 'DQ_M2_NOT_STEADY', 'E_HD', 'DQ_NON_STEADY',
     'C_DIST_PHASE', 'E_DOSE_TIMING', 'B_RESIDUAL', 'B_ETA_CL', 'C_HALFLIFE',
     'AUC_LOW', 'E_ECMO', 'E_PREGNANT', 'E_CF', 'DQ_SINGLE_LEVEL',
   ];
@@ -170,11 +177,15 @@
       dialysis: has(sf, 'E_HD'),
       nonSteadyState: has(sf, 'DQ_NON_STEADY'),
       singleLevel: has(sf, 'DQ_SINGLE_LEVEL'),
+      m2NotSteady: has(sf, 'DQ_M2_NOT_STEADY'),
+      crassLow: has(sf, 'E_CRASS_CLV_LOW'),
     };
     const out = [];
     if (!canRecommend) {
       out.push('先確認腎功能趨勢、給藥紀錄與採血時間，再重新計算。');
-      if (f.declaredAKI) out.push('腎功能正在變化時，應提早重採濃度，不等待穩態。');
+      if (f.crassLow) out.push('改用 Matzke 族群 CL 模型重新計算，並及早採濃度（雙點或 Bayesian）密集 TDM。');
+      else if (f.m2NotSteady) out.push('未達穩態：改用 Mode 3（Bayesian）評估，或於同一方案 ≥4 劑後重採雙點。');
+      else if (f.declaredAKI) out.push('腎功能正在變化時，應提早重採濃度，不等待穩態。');
       else out.push('待資料可靠後重新取樣，再評估是否調整。');
     } else if (mode === 1) {
       out.push('建議 24–48 小時內採濃度驗證 AUC 後再調整。');
@@ -255,9 +266,10 @@
       current: {
         text: currentText,
         regimen: r.regimenCurrent || null,
-        auc24: r.auc24,
+        // 不可計算（BLOCK）時不呈現 AUC：例如負 CL 推得的「AUC 483」只會誤導
+        auc24: canCalculate ? r.auc24 : NaN,
         aucLabel,
-        aucText: `${aucLabel}：${n0(r.auc24)} mg·h/L`,
+        aucText: `${aucLabel}：${n0(canCalculate ? r.auc24 : NaN)} mg·h/L`,
         verdictText: `判讀：${status.label}（目標 ${targetRangeText()}）`,
         isProjection: !!r.aucIsProjection,
         mic: r.mic,

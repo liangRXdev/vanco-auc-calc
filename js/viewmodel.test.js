@@ -71,7 +71,8 @@ console.log('\n--- Mode 2 view-model ---');
 const aIn = { dose: 500, tau: 12, tInf: 1, c1: 15, t1: 2, c2: 6, t2: 11, mic: 1 };
 const a = PK.twoLevelAUC(aIn);
 const recOpt = a.intervalOptions.find((o) => o.intervalH === aIn.tau);
-const vA = VM.buildTwoLevelViewModel({ r: a, input: aIn, recOpt, declared: {} });
+// 本案代表「已勾選穩態」的標準情境（2026-10 起 Mode 2 穩態為必填勾選）
+const vA = VM.buildTwoLevelViewModel({ r: a, input: aIn, recOpt, declared: {}, steadyStateConfirmed: true });
 c('V10', a.ok, '前置：twoLevelAUC 反算成功');
 c('V11', vA.regimenCurrent.dose === aIn.dose && vA.regimenCurrent.tau === aIn.tau
   && near(vA.regimenCurrent.dailyMg, a.tddCurrent) && recOpt.doseMg !== aIn.dose,
@@ -183,6 +184,25 @@ const smE = SUM.buildClinicalSummary(vE, S.buildSafetyMessages({
 }), 1);
 c('V34', smE.recommendation.kind === 'start' && smE.recommendation.regimen === vE.recommend,
   'Mode 1 view-model → 摘要判為「起始建議」');
+
+// ─────────── review 2026-10 #2 ───────────
+console.log('\n--- #2 Mode 1 impractical / SCr 下限標示 ---');
+const eBig = PK.empiricDosing({ age: 25, heightCm: 190, tbw: 200, scr: 0.8, sexMale: true, clModel: 'crass', targetAuc: 600 });
+const vBig = VM.buildEmpiricViewModel({ r: eBig, targetAuc: 600, icu: false, declared: {}, demo: {} });
+c('V40', eBig.maintenanceDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX && vBig.recommend.impractical === true,
+  `Mode 1 單次 ${eBig.maintenanceDose} mg > 2000 → recommend.impractical`);
+c('V41', vE.recommend.impractical === false, 'Mode 1 一般劑量 → impractical false');
+const eLow = PK.empiricDosing({ age: 40, heightCm: 170, tbw: 70, scr: 0.4, sexMale: false });
+const vLow = VM.buildEmpiricViewModel({ r: eLow, targetAuc: 500, icu: false, declared: {}, demo: {} });
+c('V42', vLow.confidenceFactors.some((x) => inText(x, '0.7') && inText(x, '機構政策'))
+  && vLow.technical.lines.some((x) => inText(x, '0.7')),
+  'SCr < 0.7 → 影響因子與技術行標示「已以 0.7 代入（機構政策）」');
+c('V43', !vE.confidenceFactors.some((x) => inText(x, '0.7')), 'SCr ≥ 0.7 → 不標示');
+
+// ─────────── review 2026-10 #4 ───────────
+c('V44', mkB({ loading: { dose: 2500, tInf: 2.5 } }).technical.lines.some((x) => inText(x, '首劑（負荷）2500 mg'))
+  && vB.technical.lines.some((x) => inText(x, '未輸入') && inText(x, '高估')),
+  'Mode 3 技術行揭露負荷劑量；未輸入時明示 AUC 會高估');
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

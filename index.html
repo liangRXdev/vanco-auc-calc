@@ -190,6 +190,7 @@
           </div>
         </div>
         <p class="hint hint--muted">💡 峰通常於輸注結束後 1–2h 採（此值 = 輸注時長 + 1~2）、谷於間隔末採。兩點皆須在輸注結束後。</p>
+        <label class="segmented__opt segmented__opt--check" style="margin-top:.5rem"><input type="checkbox" id="a-steady"><span><b>已達穩態（已給 ≥ 4 劑同一方案）</b>　必填：未勾選時僅顯示量測 AUC、不產生劑量建議（非穩態請改用 Bayesian）</span></label>
 
         <details class="declare">
           <summary class="declare__summary">臨床聲明（選填，無法自動偵測）</summary>
@@ -332,6 +333,15 @@
             <label class="field__label" for="b-ndose">已給劑數 <span class="field__unit">劑</span></label>
             <input class="field__input" type="number" id="b-ndose" min="1" max="60" step="1" placeholder="4">
           </div>
+          <div class="field">
+            <label class="field__label" for="b-load">首劑（負荷）劑量 <span class="field__unit">mg　選填</span></label>
+            <input class="field__input" type="number" id="b-load" min="100" step="50" placeholder="未給負荷請留空">
+          </div>
+          <div class="field">
+            <label class="field__label" for="b-load-tinf">負荷輸注時長 <span class="field__unit">h　選填，預設同維持</span></label>
+            <input class="field__input" type="number" id="b-load-tinf" min="0.5" max="4" step="0.25" placeholder="同維持">
+          </div>
+          <p class="hint hint--muted field--full">⚠️ 第 1 劑若為負荷劑量請務必填入：<b>有負荷劑量而未輸入時，模型會低估 CL、AUC 會高估</b>（劑數少、首劑後早期採血時影響最大）。</p>
           <div class="field">
             <label class="field__label" for="b-mic">MIC <span class="field__unit">mg/L</span></label>
             <input class="field__input" type="number" id="b-mic" min="0.25" max="4" step="0.25" placeholder="1（預設）">

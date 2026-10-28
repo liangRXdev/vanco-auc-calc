@@ -90,5 +90,40 @@ console.log(`  對照 Matzke CL=${em.clPop.toFixed(2)} L/h（Crass ${ec.clPop.to
 const ecLean = PK.empiricDosing({ tbw: 65, sexMale: true, heightCm: 175, age: 55, scr: 1.0, clModel: 'crass' });
 console.log(ecLean.warnings.some((w) => w.msg.includes('BMI') && w.msg.includes('< 30')) ? 'PASS  非肥胖用 Crass → BMI<30 警示' : 'FAIL  缺 BMI 警示') || (ecLean.warnings.some((w) => w.msg.includes('< 30')) ? pass++ : fail++);
 
+// ─────────── review 2026-10 #2：輸入範圍、SCr 下限、CrCl 封頂 ───────────
+console.log('\n--- #2 輸入範圍與上限 ---');
+function ok(name, cond) { console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}`); cond ? pass++ : fail++; }
+const base = { age: 60, heightCm: 175, tbw: 80, scr: 1.0 };
+ok('合理輸入 → 無範圍錯誤', PK.validateEmpiricInput(base).length === 0);
+ok('age 150 → 範圍錯誤（上限 120）', PK.validateEmpiricInput(Object.assign({}, base, { age: 150 })).some((m) => m.includes('年齡')));
+ok('age 120（上限）→ 可', PK.validateEmpiricInput(Object.assign({}, base, { age: 120 })).length === 0);
+ok('身高 110 cm → 範圍錯誤（下限 120，避免 IBW 負值）', PK.validateEmpiricInput(Object.assign({}, base, { heightCm: 110 })).some((m) => m.includes('身高')));
+ok('SCr 0.01 → 範圍錯誤', PK.validateEmpiricInput(Object.assign({}, base, { scr: 0.01 })).some((m) => m.includes('SCr')));
+ok('TBW 400 → 範圍錯誤', PK.validateEmpiricInput(Object.assign({}, base, { tbw: 400 })).some((m) => m.includes('體重')));
+ok('NaN → 範圍錯誤', PK.validateEmpiricInput(Object.assign({}, base, { scr: NaN })).length === 1);
+
+// SCr 下限 0.7（機構政策）：低於 0.7 以 0.7 代入 CG
+const lowScr = PK.empiricDosing({ age: 20, sexMale: true, heightCm: 180, tbw: 80, scr: 0.2 });
+ok('SCr 0.2 → scrFloored、CG 以 0.7 代入', lowScr.scrFloored === true && lowScr.scrForCrcl === 0.7);
+ok('SCr 0.5 與 0.7 的 CrCl 相同（下限生效）',
+  PK.empiricDosing({ age: 70, sexMale: false, heightCm: 160, tbw: 55, scr: 0.5 }).crcl
+  === PK.empiricDosing({ age: 70, sexMale: false, heightCm: 160, tbw: 55, scr: 0.7 }).crcl);
+ok('SCr 1.0 → 不觸發下限', e.scrFloored === false && e.scrForCrcl === 1.0);
+// CrCl 封頂 150（與 Mode 3 gotiCrCl 一致）
+ok('SCr 0.2 年輕男 → CrCl 封頂 150', lowScr.crcl === 150 && lowScr.crclCapped === true);
+ok('重現案（20M 180cm 80kg SCr 0.2）→ 1000 mg q8h（原 4750 mg q8h）',
+  lowScr.maintenanceDose === 1000 && lowScr.maintenanceInterval === 8);
+ok('CrCl 89（案例 A）不封頂、數值不變', e.crclCapped === false && Math.abs(e.crcl - 88.9) < 0.5);
+
+// ─────────── review 2026-10 #5：現行 τ 不在 [8,12,24,48] ───────────
+console.log('\n--- #5 非標準 τ ---');
+const r36 = PK.twoLevelAUC({ dose: 1000, tau: 36, tInf: 1, c1: 30, t1: 3, c2: 10, t2: 35 });
+const o36 = PK.currentIntervalOption(r36, 36);
+ok('τ 36 → intervalOptions 含以現行 τ 自算的一列', r36.intervalOptions.some((o) => o.intervalH === 36));
+ok('τ 36 → 主推薦為 q36h（非靜默換成 q12h）', o36 && o36.intervalH === 36
+  && o36.doseMg === PK.roundDose(r36.tddTarget * 36 / 24));
+ok('τ 36 → 表格依間隔排序', r36.intervalOptions.map((o) => o.intervalH).join(',') === '8,12,24,36,48');
+ok('τ 12（標準）→ 仍為 4 列、主推薦 q12h', r.intervalOptions.length === 4 && PK.currentIntervalOption(r, 12).intervalH === 12);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

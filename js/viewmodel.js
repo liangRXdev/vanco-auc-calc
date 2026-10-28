@@ -41,10 +41,12 @@
       recommend: {
         dose: r.maintenanceDose, tau: r.maintenanceInterval, dailyMg: r.maintenanceDailyMg,
         auc24: r.predictedAuc24, peak: r.predictedPeak, trough: r.predictedTrough,
+        impractical: r.maintenanceDose > VANCO.MAINT_PERDOSE_PRACTICAL_MAX,
       },
       loading: i.icu ? { dose: r.loadingDose, capped: r.loadingCapped } : null,
       alternatives: [],
       confidenceFactors: list([
+        r.scrFloored && `SCr ${d.scr != null ? d.scr : '—'} 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）`,
         dec.declaredAKI && 'AKI',
         dec.pregnant && '懷孕',
         dec.cysticFibrosis && 'CF',
@@ -55,7 +57,9 @@
         method: crass ? '經驗起始（Crass 2018 肥胖 CL 模型）' : '經驗起始（Matzke 族群 CL）',
         clLabel, loadLabel,
         lines: [
-          `CrCl (Cockcroft-Gault，${r.crclWeight.label} ${f(r.crclWeight.weight, 1)}kg) = ${f(r.crcl, 0)} mL/min`,
+          `CrCl (Cockcroft-Gault，${r.crclWeight.label} ${f(r.crclWeight.weight, 1)}kg) = ${f(r.crcl, 0)} mL/min`
+            + (r.crclCapped ? `（計算值 ${f(r.crclRaw, 0)}，封頂 ${VANCO.CG_CRCL_CAP}）` : ''),
+          r.scrFloored ? `SCr 實測 ${d.scr != null ? d.scr : '—'} < ${VANCO.CG_SCR_FLOOR}：CG 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）` : '',
           `${clLabel} = ${f(r.clPop, 2)} L/h；Vd = ${f(r.vdPop, 1)} L`,
           `IBW ${f(r.ibw, 1)} kg；BMI ${f(r.bmi, 1)} kg/m²`,
           `理想日劑量（目標 AUC ${i.targetAuc} × CL）= ${f(r.tddTarget, 0)} mg/day → 圓整 ${r.maintenanceDose} mg q${r.maintenanceInterval}h（${f(r.maintenanceDailyMg, 0)} mg/day）`,
@@ -63,7 +67,7 @@
           i.icu ? [`${loadLabel} = ${r.loadingDose} mg${r.loadingCapped ? '（已封頂 3000 mg）' : ''}`] : [],
           crass && r.nomogram ? [`Crass nomogram 對照：${r.nomogram.maint} mg q${r.nomogram.tau}h（CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}）`] : [],
           [tInfNote]
-        ),
+        ).filter(Boolean),
       },
     };
   }
@@ -75,6 +79,7 @@
    *   input    { dose, tau, tInf, c1, t1, c2, t2, mic }
    *   recOpt   主推薦的 intervalOption（維持原間隔）
    *   declared { declaredAKI, declaredUnreliableDoseTiming, declaredUnreliableSampleTiming, pregnant, cysticFibrosis }
+   *   steadyStateConfirmed  使用者是否勾選「已達穩態（≥4 劑同一方案）」（閘門在 safety；此處只決定文案）
    */
   function buildTwoLevelViewModel(i) {
     const r = i.r, x = i.input, rec = i.recOpt, dec = i.declared || {};
@@ -83,12 +88,13 @@
       currentExposure: { auc24: r.auc24, peak: r.cMaxTrue, trough: r.cMinTrue },
       auc24: r.auc24, mic: x.mic, aucOverMic: r.aucOverMic,
       targetAuc: (VANCO.AUC_TARGET_MIN + VANCO.AUC_TARGET_MAX) / 2,
-      recommend: {
+      recommend: rec ? {
         dose: rec.doseMg, tau: rec.intervalH, dailyMg: rec.dailyMg,
         auc24: rec.projectedAuc24, peak: rec.projectedPeak, trough: rec.projectedTrough,
         impractical: rec.impractical,
-      },
-      alternatives: r.intervalOptions.map((o) => ({
+      } : null,
+      // 圓整後劑量 ≤ 0 的間隔（極低 CL）不可作為任何建議或替代方案
+      alternatives: r.intervalOptions.filter((o) => o.doseMg > 0).map((o) => ({
         dose: o.doseMg, tau: o.intervalH, dailyMg: o.dailyMg,
         auc24: o.projectedAuc24, peak: o.projectedPeak, trough: o.projectedTrough,
         impractical: o.impractical, isCurrent: o.intervalH === x.tau,
@@ -100,8 +106,11 @@
         dec.declaredUnreliableSampleTiming && '採血時間不可靠',
         dec.pregnant && '懷孕',
         dec.cysticFibrosis && 'CF',
+        i.steadyStateConfirmed !== true && '未確認穩態',
       ]),
-      confidenceBaseNote: '穩態雙點量測、取樣時相合理',
+      confidenceBaseNote: i.steadyStateConfirmed === true
+        ? '已確認穩態（≥4 劑同一方案）之雙點量測、取樣時相合理'
+        : '雙點量測（未確認穩態）',
       technical: {
         method: '雙點反算（Sawchuk-Zaske first-order、兩段式 AUC）',
         lines: [
@@ -171,6 +180,7 @@
         method: 'Bayesian MAP（Goti 2018 二室先驗）',
         lines: [
           `濃度：${lv}`,
+          i.loading ? `首劑（負荷）${i.loading.dose} mg、輸注 ${i.loading.tInf}h（已納入給藥史）` : '首劑（負荷）：未輸入（若實際有給，AUC 會高估）',
           `個體 CL ${f(r.cl, 2)} L/h（先驗 ${f(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}`,
           `Vc ${f(r.vc, 1)} L、Vp ${f(r.vp, 1)} L、Vss ${f(r.vss, 1)} L、Q ${f(r.q, 1)} L/h`,
           `CrCl ${f(r.crcl, 0)} mL/min；目標函數 Obj ${f(r.objective, 3)}；擬合最大殘差 ${f(r.maxAbsResid, 1)} mg/L`,

@@ -297,9 +297,59 @@
     return { peak, trough, auc24: dose * (24 / tau) / pk.cl };
   }
 
+  // ---------- 輸入時序驗證（Mode 3 主計算）----------
+  /**
+   * 給藥史在 UI 以「N 劑於 0,τ,…,(N−1)τ、濃度時刻＝距最近一劑起始」重建；
+   * 下列前提不成立時重建出的給藥史與實際不符，MAP 會給出貌似合理但錯誤的估計。
+   * input: { tau, tInf, nDose, levels: [{ conc, tRel }], loadingDose?, loadingTInf? }；
+   * 回傳具體錯誤訊息陣列（空＝通過）。loadingDose 為 undefined/null/NaN 視同未輸入。
+   */
+  function validateRegimenTiming(input) {
+    const i = input || {};
+    const e = [];
+    if (!(i.tInf < i.tau)) {
+      e.push(`輸注時長 ${i.tInf}h 須短於給藥間隔 τ ${i.tau}h（否則劑次重疊／為持續輸注，本工具未涵蓋）。`);
+    }
+    if (!(Number.isInteger(i.nDose) && i.nDose >= 1)) {
+      e.push(`已給劑數須為正整數（目前輸入 ${i.nDose}）。`);
+    }
+    if (hasLoading(i.loadingDose) && !(i.loadingDose > 0)) {
+      e.push(`首劑（負荷）劑量須 > 0 mg（目前輸入 ${i.loadingDose}）；未給負荷請留空。`);
+    }
+    if (hasLoading(i.loadingDose) && i.loadingTInf != null && !isNaN(i.loadingTInf)
+      && !(i.loadingTInf > 0 && i.loadingTInf < i.tau)) {
+      e.push(`首劑（負荷）輸注時長 ${i.loadingTInf}h 須 > 0 且短於給藥間隔 τ ${i.tau}h。`);
+    }
+    (i.levels || []).forEach((l, k) => {
+      if (!(l.tRel >= 0 && l.tRel <= i.tau)) {
+        e.push(`濃度 ${k + 1} 的時刻 ${l.tRel}h 須介於 0 與 τ ${i.tau}h 之間`
+          + '（時刻＝距最近一劑輸注開始；超過 τ 表示其後應已再給一劑，請調整劑數或時刻）。');
+      }
+    });
+    return e;
+  }
+
+  const hasLoading = (x) => x != null && !Number.isNaN(x);
+
+  /**
+   * 重建給藥史：N 劑於 0,τ,…,(N−1)τ。有首劑（負荷）劑量時第 1 劑改為負荷量
+   * （輸注時長未填則沿用維持輸注時長）。實際有給負荷卻未輸入 → 模型以較少藥量擬合
+   * 同一濃度 → CL 低估、AUC 高估。
+   */
+  function buildDoseHistory(i) {
+    const doses = [];
+    for (let k = 0; k < i.nDose; k++) doses.push({ time: k * i.tau, dose: i.dose, tInf: i.tInf });
+    if (doses.length && hasLoading(i.loadingDose)) {
+      doses[0].dose = i.loadingDose;
+      if (i.loadingTInf != null && !Number.isNaN(i.loadingTInf)) doses[0].tInf = i.loadingTInf;
+    }
+    return doses;
+  }
+
   const api = {
     gotiCrCl, priorTypicalValues, simulateConc,
     residualSD, objective, nelderMead, bayesianMAP, steadyStateExposure,
+    validateRegimenTiming, buildDoseHistory,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

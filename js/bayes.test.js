@@ -141,5 +141,43 @@ ok('nelderMead 回傳 iters', typeof nmEasy.iters === 'number');
 const oob = BAYES.simulateConc([{ time: 0, dose: 1000, tInf: 1 }], [-5], { cl: 4.5, vc: 58.4, vp: 38.4, q: 6.5 });
 ok('simulateConc 未捕捉時刻回 NaN（非 undefined）', Number.isNaN(oob[0]));
 
+// ---------- review 2026-10 #6：Mode 3 主計算時序驗證 ----------
+console.log('\n--- #6 Mode 3 時序驗證 ---');
+const T = (o) => BAYES.validateRegimenTiming(Object.assign({ tau: 12, tInf: 1, nDose: 4, levels: [{ conc: 15, tRel: 11.5 }] }, o));
+ok('合理時序 → 無錯誤', T({}).length === 0);
+ok('tInf = τ → 錯誤（須 tInf < τ）', T({ tInf: 12 }).some((m) => m.includes('輸注時長') && m.includes('12')));
+ok('tInf > τ → 錯誤', T({ tInf: 13 }).length === 1);
+ok('tRel < 0 → 錯誤', T({ levels: [{ conc: 15, tRel: -1 }] }).some((m) => m.includes('濃度 1') && m.includes('-1')));
+ok('tRel > τ → 錯誤（應已再給一劑）', T({ levels: [{ conc: 15, tRel: 13 }] }).some((m) => m.includes('濃度 1') && m.includes('13')));
+ok('tRel = τ（邊界）→ 可', T({ levels: [{ conc: 15, tRel: 12 }] }).length === 0);
+ok('tRel = 0（邊界）→ 可', T({ levels: [{ conc: 15, tRel: 0 }] }).length === 0);
+ok('第 2 點時刻超出 → 指名濃度 2', T({ levels: [{ conc: 25, tRel: 2 }, { conc: 15, tRel: 20 }] }).some((m) => m.includes('濃度 2')));
+ok('N = 2.5 → 錯誤（須正整數）', T({ nDose: 2.5 }).some((m) => m.includes('劑數') && m.includes('2.5')));
+ok('N = 0 → 錯誤', T({ nDose: 0 }).some((m) => m.includes('劑數')));
+ok('N = 1 → 可', T({ nDose: 1 }).length === 0);
+
+// ---------- review 2026-10 #4：Mode 3 首劑（負荷）劑量 ----------
+console.log('\n--- #4 負荷劑量納入給藥史 ---');
+const H0 = BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 4 });
+ok('無負荷 → 與舊重建一致（N 劑等量於 0,τ,…）', H0.length === 4
+  && H0.every((d, k) => d.dose === 1000 && d.tInf === 1 && d.time === k * 12));
+const H1 = BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 4, loadingDose: 2500, loadingTInf: 2.5 });
+ok('有負荷 → 第 1 劑為負荷量與其輸注時長，其餘不變', H1[0].dose === 2500 && H1[0].tInf === 2.5 && H1[0].time === 0
+  && H1.slice(1).every((d) => d.dose === 1000 && d.tInf === 1));
+ok('負荷輸注時長未填 → 沿用維持輸注時長',
+  BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 2, loadingDose: 2000 })[0].tInf === 1);
+ok('負荷劑量為空（NaN）→ 視同未輸入',
+  BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 2, loadingDose: NaN })[0].dose === 1000);
+// 實際有給負荷卻漏填 → 模型以較少藥量擬合同一濃度 → CL 低估、AUC 高估
+const covL = { age: 60, weightKg: 70, scr: 1.0, sexMale: true, dialysis: false };
+const obsL = [{ time: 12 + 11.5, conc: 18 }];
+const mapNo = BAYES.bayesianMAP({ cov: covL, tbw: 70, doses: BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 2 }), obs: obsL, currentDailyDose: 2000 });
+const mapLd = BAYES.bayesianMAP({ cov: covL, tbw: 70, doses: BAYES.buildDoseHistory({ dose: 1000, tau: 12, tInf: 1, nDose: 2, loadingDose: 2500, loadingTInf: 2.5 }), obs: obsL, currentDailyDose: 2000 });
+ok(`漏填負荷 → AUC 高估（未填 ${mapNo.auc24Current.toFixed(0)} > 有填 ${mapLd.auc24Current.toFixed(0)}）`, mapNo.auc24Current > mapLd.auc24Current);
+const TL = (o) => BAYES.validateRegimenTiming(Object.assign({ tau: 12, tInf: 1, nDose: 4, levels: [{ conc: 15, tRel: 11.5 }] }, o));
+ok('負荷劑量 ≤ 0 → 錯誤', TL({ loadingDose: -500 }).some((m) => m.includes('負荷')));
+ok('負荷輸注時長 ≥ τ → 錯誤', TL({ loadingDose: 2500, loadingTInf: 12 }).some((m) => m.includes('負荷') && m.includes('輸注')));
+ok('負荷 2500、輸注 2.5h → 可', TL({ loadingDose: 2500, loadingTInf: 2.5 }).length === 0);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

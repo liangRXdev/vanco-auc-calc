@@ -66,7 +66,12 @@
     const clModel = input.clModel === 'crass' ? 'crass' : 'matzke';
     const ibw = idealBodyWeight(sexMale, heightCm);
     const cw = crclDosingWeight(tbw, ibw);
-    const crcl = cockcroftGault(age, cw.weight, scr, sexMale);
+    // 機構政策：CG 的 SCr 下限 0.7、CrCl 封頂 150（Crass CLV 式本身仍用實測 SCr）
+    const scrForCrcl = Math.max(scr, VANCO.CG_SCR_FLOOR);
+    const scrFloored = scr < VANCO.CG_SCR_FLOOR;
+    const crclRaw = cockcroftGault(age, cw.weight, scrForCrcl, sexMale);
+    const crcl = Math.min(crclRaw, VANCO.CG_CRCL_CAP);
+    const crclCapped = crclRaw > VANCO.CG_CRCL_CAP;
     const bmi = tbw / Math.pow(heightCm / 100, 2);
 
     let clPop, vdPop, loading, loadingCapped, interval, nomogram = null;
@@ -100,7 +105,7 @@
 
     return {
       clModel, bmi,
-      ibw, crclWeight: cw, crcl,
+      ibw, crclWeight: cw, crcl, crclRaw, crclCapped, scrForCrcl, scrFloored,
       loadingDose: loading,
       loadingCapped,
       clPop, vdPop, targetAuc, tddTarget,
@@ -113,6 +118,24 @@
       nomogram,
       warnings: empiricWarnings({ crcl, criticallyIll, maintDaily, predictedAuc24, predictedTrough: pt.trough, tbw, ibw, clModel, bmi, clPop }),
     };
+  }
+
+  /**
+   * Mode 1 輸入範圍（VANCO.RANGES）。範圍外不計算——age>140 會使 CG 為負、
+   * 身高 <120 cm 使 Devine IBW 趨近負值、SCr 極低使 CrCl 爆量。
+   * input: { age, heightCm, tbw, scr }；回傳錯誤訊息陣列（空＝通過）。
+   */
+  function validateEmpiricInput(input) {
+    const i = input || {};
+    const R = VANCO.RANGES;
+    const spec = [['年齡', i.age, R.age], ['身高', i.heightCm, R.height], ['體重', i.tbw, R.tbw], ['SCr', i.scr, R.scr]];
+    const e = [];
+    for (const [label, v, r] of spec) {
+      if (!isFinite(v) || v < r.min || v > r.max) {
+        e.push(`${label} ${isFinite(v) ? v : '—'} ${r.unit} 超出適用範圍（${r.min}–${r.max} ${r.unit}）`);
+      }
+    }
+    return e;
   }
 
   /** 族群 CLvanco（Matzke 1984）：CLvanco(mL/min)=0.69×CrCl+3.66 → 回傳 L/h */
@@ -229,7 +252,10 @@
     // 5) 比例線性外推：達 AUC 目標中點（500）所需每日總劑量
     const targetMid = (VANCO.AUC_TARGET_MIN + VANCO.AUC_TARGET_MAX) / 2;
     const tddTarget = tddCurrent * (targetMid / auc24);
-    const intervalOptions = VANCO.INTERVALS_H.map((h) => {
+    // 現行 τ 不在標準選項時（如 q36h），以現行 τ 自算一列，供主推薦「維持原間隔」使用
+    const intervals = VANCO.INTERVALS_H.indexOf(tau) >= 0 ? VANCO.INTERVALS_H
+      : VANCO.INTERVALS_H.concat([tau]).sort((a, b) => a - b);
+    const intervalOptions = intervals.map((h) => {
       const perDose = roundDose(tddTarget * (h / 24));
       // 各間隔的穩態峰/谷（隨間隔而異，為選擇間隔的臨床依據；AUC 則與間隔無關）
       const sim = simulateRegimen(perDose, h, tInf, ke, vd, cl, mic);
@@ -258,6 +284,11 @@
     };
   }
 
+  /** 主推薦列：與現行 τ 相同的間隔（twoLevelAUC 保證存在）；找不到回 null，不另選其他間隔。 */
+  function currentIntervalOption(r, tau) {
+    return (r && r.intervalOptions || []).find((o) => o.intervalH === tau) || null;
+  }
+
   // ---------- 驗證 ----------
   function validateTwoLevel(input) {
     const e = [];
@@ -283,8 +314,7 @@
     if (crass) {
       if (bmi < CRASS.BMI_OBESE)
         w.push({ level: 'warn', msg: `BMI ${bmi.toFixed(1)} < 30：Crass 模型建立於肥胖族群，非肥胖者請改用 Matzke。` });
-      if (clPop < CRASS.CLV_MIN_REC)
-        w.push({ level: 'warn', msg: `估計 CLV ${clPop.toFixed(2)} < 0.5 L/h：超出 Crass 建模族群，無 nomogram 建議，須臨床判斷 + 密集 TDM。` });
+      // CLV < 0.5 L/h 由 safety.checkModelOutput 以 E_CRASS_CLV_LOW 封鎖（不在此重複警示）
       w.push({ level: 'info', msg: `肥胖 CL 模型：Crass 2018（CLV=age/SCr/sex/TBW^0.75，SCr 須 IDMS）；維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）。` });
     } else if (obese) {
       w.push({ level: 'warn', msg: `肥胖患者：Matzke 族群 CL 可能偏差（一般族群回歸）；建議切換「Crass 肥胖 CL 模型」，或儘早雙點 TDM。` });
@@ -314,7 +344,7 @@
     idealBodyWeight, adjustedBodyWeight, crclDosingWeight, cockcroftGault,
     roundDose, suggestIntervalByCrCl, suggestIntervalByClv, matzkeClVanco,
     crassClVanco, crassVd, crassLoading, crassNomogramRow,
-    empiricDosing, twoLevelAUC, validateTwoLevel,
+    empiricDosing, validateEmpiricInput, twoLevelAUC, validateTwoLevel, currentIntervalOption,
     steadyStatePeakTrough, simulateRegimen,
   };
 

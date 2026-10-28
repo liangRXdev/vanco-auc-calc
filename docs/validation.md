@@ -46,6 +46,36 @@
 
 ---
 
+## 安全守衛與輸入政策（2026-10 審查修正）
+
+> 下列守衛不改變上表案例 A–F 的任何數值（A/B/C 之 SCr ≥ 0.7、CrCl < 150；Mode 2 τ 皆為標準間隔）。
+> 對應測試：`js/guards.test.js`（端到端重現）、`js/safety.test.js` C40–C48、`js/pk.test.js` #2/#5、`js/bayes.test.js` #4/#6。
+
+| 守衛 | 觸發條件 | 處置 | 碼 / 位置 |
+|------|---------|------|----------|
+| 模型輸出範圍（三模式） | CL ≤ 0、建議單次或日劑量 ≤ 0、任一為非有限值 | **BLOCK**：不出劑量、摘要不顯示 AUC | `E_MODEL_OUT_OF_RANGE`（safety.checkModelOutput） |
+| Crass CLV 下限 | Crass 模型估計 CLV < 0.5 L/h（Table 2 footnote a） | **BLOCK**（原為 warn）；提示改用 Matzke + 密集 TDM | `E_CRASS_CLV_LOW` |
+| 日劑量上限 | 建議日劑量 > 4500 mg/day（Rec 13） | WARNING（所有病人，不限肥胖） | `DOSE_DAILY_HIGH` |
+| Mode 1 輸入範圍 | 超出 `VANCO.RANGES`：年齡 18–120、身高 120–220 cm、TBW 30–300 kg、SCr 0.1–15 mg/dL | 不計算（alertResult） | `PK.validateEmpiricInput` |
+| Mode 2 穩態前提 | 未勾選「已達穩態（已給 ≥ 4 劑同一方案）」 | 顯示量測 AUC，但**不出劑量建議**，建議改用 Mode 3 | `DQ_M2_NOT_STEADY` |
+| Mode 2 間隔表 | 圓整後劑量為 0 mg 的間隔列 | 不列入替代方案，表格標示「不適用」 | viewmodel / ui |
+| Mode 2 非標準 τ | 現行 τ ∉ {8, 12, 24, 48} | 以現行 τ 自算一列作主推薦（不再退回 q12h） | `PK.currentIntervalOption` |
+| Mode 3 時序 | tInf ≥ τ；tRel < 0 或 > τ；劑數非正整數；負荷劑量 ≤ 0 或負荷輸注 ≥ τ | 不計算，錯誤訊息指名欄位與數值 | `BAYES.validateRegimenTiming` |
+
+### Cockcroft-Gault SCr 下限 0.7 mg/dL（機構政策，Mode 1）
+
+- 實測 SCr < 0.7 mg/dL 時，Mode 1 的 Cockcroft-Gault 以 **0.7 代入**；結果頁「影響因子」、第三層 PK 與技術報告標示「SCr 已以 0.7 代入（機構政策）」。
+- 理由：低 SCr 多反映肌肉量少（臥床、高齡、營養不良）而非腎功能佳，直接代入會高估 CrCl 與族群 CL。審查重現：20 歲男 180 cm 80 kg SCr 0.2 原輸出 **4750 mg q8h** → 修正後 **1000 mg q8h**（預估 AUC 467）。
+- 同時 **CrCl 封頂 150 mL/min**，與 Mode 3 `gotiCrCl`（`GOTI.CRCL_CAP`）一致。
+- **不適用範圍**：Crass CLV 式本身仍用實測 SCr（模型共變數）；Mode 3 Goti 先驗維持原模型規則（年齡 > 60 且 SCr < 1 → 1）。兩者是否套用 0.7 下限列為待決。
+
+### Mode 3 首劑（負荷）劑量
+
+- 選填「首劑（負荷）劑量」與「負荷輸注時長」（預設同維持）；填入後給藥史第 1 劑改為負荷量。
+- **有負荷劑量而未輸入時，模型以較少藥量擬合同一濃度 → CL 低估、AUC 高估**（測試案例：未填 808 vs 有填 636 mg·h/L）。未填時給藥史與舊版完全相同，golden G1–G3 不變。
+
+---
+
 ## 判讀
 
 - **Mode 2 三案 AUC24 全部 <10% 吻合（340/341、375/383、464/464）→ 核心 PK 引擎已驗證可信。** ✅

@@ -181,6 +181,14 @@
       alertResult('e', '本工具僅適用成人（≥18 歲）。小兒萬古黴素劑量方式不同（60–80 mg/kg/day，Cockcroft-Gault 亦不適用），請另參小兒指引。');
       return;
     }
+    // 輸入範圍（VANCO.RANGES）：範圍外不計算（age>140 使 CG 為負、身高過低使 IBW 為負、SCr 極低使 CrCl 爆量）
+    const rangeErr = PK.validateEmpiricInput({ age: num('e-age'), heightCm: num('e-height'), tbw: num('e-tbw'), scr: num('e-scr') });
+    if (rangeErr.length) {
+      const idOf = { '年齡': 'e-age', '身高': 'e-height', '體重': 'e-tbw', 'SCr': 'e-scr' };
+      markError(rangeErr.map((m) => idOf[m.split(' ')[0]]).filter(Boolean), true);
+      alertResult('e', rangeErr, ['請確認單位與數值後重新計算；範圍外的病人不適用本工具的族群模型。']);
+      return;
+    }
 
     const targetAuc = num('e-target') || VANCO.AUC_TARGET_DEFAULT;
     const clModel = document.querySelector('input[name="e-clmodel"]:checked').value;
@@ -208,6 +216,8 @@
       mode: 1,
       eligibility: Object.assign({ age: num('e-age') }, declareE),
       dataQuality: { input: {}, mode: 1 },
+      // 模型輸出守衛：CL ≤ 0、劑量 ≤ 0／非有限、Crass CLV < 0.5 → BLOCK（摘要不帶劑量）
+      modelOutput: { model: r.clModel, cl: r.clPop, perDose: r.maintenanceDose, dailyMg: r.maintenanceDailyMg },
       // 註：Mode 1 的預測 AUC 刻意不送入 classifyAUC——經驗起始必須給起始劑量，
       // 若因四捨五入落在 600 邊界而封鎖，臨床上更不安全。判讀僅供顯示。
     });
@@ -225,21 +235,24 @@
     techText.e = SUMMARY.buildTechnicalReport(viewE, sfE, 1);
     $('e-tech').textContent = techText.e;
 
-    // 第三層：進階 PK
+    // 第三層：進階 PK。模型輸出被 safety 擋下時只列輸入推導值，不列任何劑量。
+    const okE = sfE.allowCalculation;
     $('e-output').innerHTML =
-      metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0), 'mL/min', true) +
+      metric('Cockcroft-Gault CrCl', fmt(r.crcl, 0) + (r.crclCapped ? '（封頂）' : ''), 'mL/min', true) +
+      (r.scrFloored ? metric('CG 用 SCr', fmt(r.scrForCrcl, 1), 'mg/dL（已以 0.7 代入，機構政策）') : '') +
       metric('BMI', fmt(r.bmi, 1), 'kg/m²') +
       metric(clLabel, fmt(r.clPop, 2), 'L/h') +
       metric('IBW / CrCl 用體重', `${fmt(r.ibw, 1)} / ${fmt(r.crclWeight.weight, 1)}`, 'kg') +
+      (!okE ? '' :
       (icu ? metric(loadLabel, r.loadingDose + (r.loadingCapped ? '✱' : ''), 'mg', true) : '') +
       metric('理想日劑量 (目標)', fmt(r.tddTarget, 0), 'mg/day') +
       metric('建議維持 (圓整)', `${r.maintenanceDose} q${r.maintenanceInterval}h`, `＝${fmt(r.maintenanceDailyMg, 0)}/day`, true) +
       metric(`預測 AUC₂₄（目標 ${targetAuc}）`, fmt(r.predictedAuc24, 0), 'mg·h/L', true) +
       metric('預測峰 / 谷', `${fmt(r.predictedPeak, 1)} / ${fmt(r.predictedTrough, 1)}`, 'mg/L') +
-      (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : '');
+      (crass && r.nomogram ? metric('Crass nomogram 對照', `${r.nomogram.maint} q${r.nomogram.tau}h`, `CLV≈${r.nomogram.clv}、負荷 ${r.nomogram.load}`) : ''));
     // Mode 1 不收 tInf，故僅陳述建議區間。峰/谷固定以 EMPIRIC_TINF_H 預測，
     // 若實際依此建議延長輸注，真實峰值會略低於顯示值——如實揭露，不動已交叉驗證的算式。
-    $('e-infusion').innerHTML = infusionHintHTML(infusionReqText([
+    $('e-infusion').innerHTML = !okE ? '' : infusionHintHTML(infusionReqText([
       { label: '負荷', dose: icu ? r.loadingDose : 0 },
       { label: '維持', dose: r.maintenanceDose },
     ], `峰/谷預測固定假設輸注 ${VANCO.EMPIRIC_TINF_H}h；延長輸注後實際峰值略低、AUC 不變`));
@@ -249,6 +262,8 @@
     if (crass) extra.push({ level: 'info', msg: `肥胖 CL 模型（Crass 2018）：維持 TDD=目標AUC×CLV、負荷採 nomogram（less is more）；CrCl 體重採「${r.crclWeight.label}」。` });
     else extra.push({ level: 'info', msg: `CrCl 體重採「${r.crclWeight.label}」；負荷 mg/kg 用 TBW，維持以族群 CL 反推目標 AUC。` });
     if (r.loadingCapped) extra.push({ level: 'info', msg: '✱ 負荷已封頂於 3000 mg。' });
+    if (r.scrFloored) extra.push({ level: 'info', msg: `SCr ${num('e-scr')} < ${VANCO.CG_SCR_FLOOR} mg/dL：Cockcroft-Gault 已以 ${VANCO.CG_SCR_FLOOR} 代入（機構政策）。` });
+    if (r.crclCapped) extra.push({ level: 'info', msg: `CrCl 計算值 ${fmt(r.crclRaw, 0)} 已封頂 ${VANCO.CG_CRCL_CAP} mL/min（與 Mode 3 一致）。` });
     renderWarnings($('e-warnings'), extra.concat(safetyWarnings(sfE), r.warnings));
 
     show('e');
@@ -311,12 +326,16 @@
     // 間隔劑量表（AUC 由每日總量決定、各間隔相同；差異在峰/谷。標記與輸入 τ 相同的列）
     const rows = r.intervalOptions.map((o) => {
       const rec = o.intervalH === input.tau;
+      // 圓整後 ≤ 0 mg（極低 CL）：不可作為建議，整列以「—」呈現
+      if (!(o.doseMg > 0)) {
+        return `<tr><td>q${o.intervalH}h</td><td colspan="5">— 劑量圓整為 0 mg，不適用</td></tr>`;
+      }
       const inRange = o.projectedAuc24 >= VANCO.AUC_TARGET_MIN && o.projectedAuc24 <= VANCO.AUC_TARGET_MAX;
       const doseCell = o.impractical ? `${o.doseMg}<span title="單次過大，建議縮短間隔">⚠</span>` : o.doseMg;
       return `<tr class="${rec ? 'is-recommended' : ''}">
         <td>q${o.intervalH}h</td>
         <td>${doseCell}</td>
-        <td>${o.dailyMg}</td>
+        <td>${fmt(o.dailyMg, 0)}</td>
         <td>${fmt(o.projectedPeak, 1)}</td>
         <td>${fmt(o.projectedTrough, 1)}</td>
         <td style="color:${inRange ? 'var(--color-green)' : 'var(--color-amber)'}">${fmt(o.projectedAuc24, 0)}</td>
@@ -333,23 +352,27 @@
       pregnant: $('a-preg').checked,
       cysticFibrosis: $('a-cf').checked,
     };
+    const steadyA = $('a-steady').checked;
+    // 主推薦方案：維持原間隔。非標準 τ 由 twoLevelAUC 自算一列，不再退回 q12h。
+    const recOpt = PK.currentIntervalOption(r, input.tau);
     // Safety 層（eligibility 聲明 + 分布相取樣分級 + AUC 分級）——唯一安全判斷來源。
     // AUC 一併送入 classifyAUC，使「AUC>600 不出單行減量建議」由 safety 決定，
     // 不在 UI 另寫一份 aucHigh 規則。
     const sf = SAFETY.buildSafetyMessages({
       mode: 2,
       eligibility: declareA,
+      // 穩態前提：未勾選 → safety 封鎖劑量建議並建議改用 Mode 3
+      dataQuality: { input: { steadyStateConfirmed: steadyA }, mode: 2 },
       concentrations: {
         levels: { c1: input.c1, t1: input.t1, c2: input.c2, t2: input.t2 },
         dosing: { tau: input.tau, tInf: input.tInf },
         pk: { ke: r.ke, halfLife: r.halfLife, auc24: r.auc24 },
       },
       auc: r.auc24,
+      modelOutput: { model: 'two-level', cl: r.cl, perDose: recOpt ? recOpt.doseMg : NaN, dailyMg: recOpt ? recOpt.dailyMg : NaN },
     });
 
-    // 主推薦方案：維持原間隔（沿用既有挑法，不新增模型）
-    const recOpt = r.intervalOptions.find((o) => o.intervalH === input.tau) || r.intervalOptions[1];
-    const viewA = VIEWMODEL.buildTwoLevelViewModel({ r, input, recOpt, declared: declareA });
+    const viewA = VIEWMODEL.buildTwoLevelViewModel({ r, input, recOpt, declared: declareA, steadyStateConfirmed: steadyA });
     const sumA = SUMMARY.buildClinicalSummary(viewA, sf, 2);
     renderSummary($('a-summary'), sumA);
 
@@ -383,8 +406,8 @@
     };
     planACustom = null;
     rebuildTextsA();
-    $('sim-dose').value = recOpt.doseMg;
-    $('sim-tau').value = recOpt.intervalH;
+    $('sim-dose').value = recOpt && recOpt.doseMg > 0 ? recOpt.doseMg : input.dose;
+    $('sim-tau').value = input.tau;
     $('sim-out').innerHTML = '';
 
     show('a');
@@ -509,7 +532,15 @@
     });
     if (!levels.length || levelBad) { alertBayes('請至少填入 1 點有效濃度（濃度 > 0、時刻 ≥ 0）。'); return; }
 
-    const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = Math.round(num('b-ndose'));
+    const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = num('b-ndose');
+    // 首劑（負荷）劑量：選填，空白 → NaN → 視同未輸入
+    const loadingDose = num('b-load'), loadingTInf = num('b-load-tinf');
+    // 時序前提（tInf < τ、0 ≤ tRel ≤ τ、N 為正整數）不成立 → 重建的給藥史與實際不符，不計算
+    const timingErr = BAYES.validateRegimenTiming({ tau, tInf, nDose: N, levels, loadingDose, loadingTInf });
+    if (timingErr.length) {
+      alertBayes(timingErr, ['請確認給藥間隔、輸注時長、已給劑數與採血時刻（距最近一劑起始）後重新計算。']);
+      return;
+    }
     const sexMale = document.querySelector('input[name="b-sex"]:checked').value === 'M';
     const dialysis = $('b-dial').checked;
     // 臨床聲明（無法自動偵測，由使用者勾選）
@@ -527,8 +558,8 @@
     const ibw = PK.idealBodyWeight(sexMale, num('b-height'));
     const cw = PK.crclDosingWeight(num('b-tbw'), ibw);
 
-    // 給藥史：N 劑於 0,τ,…,(N−1)τ；濃度絕對時刻 = 最近一劑起始 + tRel
-    const doses = []; for (let i = 0; i < N; i++) doses.push({ time: i * tau, dose, tInf });
+    // 給藥史：N 劑於 0,τ,…,(N−1)τ（第 1 劑可為負荷量）；濃度絕對時刻 = 最近一劑起始 + tRel
+    const doses = BAYES.buildDoseHistory({ dose, tau, tInf, nDose: N, loadingDose, loadingTInf });
     const lastStart = (N - 1) * tau;
     const obs = levels.map((l) => ({ time: lastStart + l.tRel, conc: l.conc }));
 
@@ -543,11 +574,16 @@
     const elapsedToLast = lastStart + Math.max.apply(null, levels.map((l) => l.tRel));
     const steadyState = isFinite(tHalfEff) && elapsedToLast >= 4 * tHalfEff;
 
+    // 建議劑量（同間隔達目標 AUC）——數值一律算出，是否呈現由 summary 依 safety 決定
+    const recTDD = r.recommendTDD(targetAuc);
+    const recDose = PK.roundDose(recTDD * (tau / 24), 250);
+
     const sf = SAFETY.buildSafetyMessages({
       eligibility: Object.assign({ age: num('b-age'), dialysis }, declare),
       dataQuality: { input: { nLevels: levels.length, steadyState }, mode: 3 },
       bayesFit: r,
       auc: r.auc24Current,
+      modelOutput: { model: 'bayes', cl: r.cl, perDose: recDose, dailyMg: recDose * (24 / tau) },
     });
 
     // optimizer 未收斂 / 多起點不一致 / 非有限輸出 → 不吐貌似合理的數字
@@ -583,9 +619,6 @@
     $('b-fit').innerHTML =
       `<thead><tr><th>採血點</th><th>實測 (mg/L)</th><th>模型預測</th><th>差值</th></tr></thead><tbody>${fitRows}</tbody>`;
 
-    // 建議劑量（同間隔達目標 AUC）——數值一律算出，是否呈現由 summary 依 safety 決定
-    const recTDD = r.recommendTDD(targetAuc);
-    const recDose = PK.roundDose(recTDD * (tau / 24), 250);
     const recExp = BAYES.steadyStateExposure(recDose, tau, tInf, { cl: r.cl, vc: r.vc, vp: r.vp, q: r.q });
     // 現行方案的穩態暴露（達標時摘要顯示「維持現行」需要峰/谷）
     const curExp = BAYES.steadyStateExposure(dose, tau, tInf, { cl: r.cl, vc: r.vc, vp: r.vp, q: r.q });
@@ -594,6 +627,7 @@
     const sex = sexMale ? '男' : '女';
     const viewB = VIEWMODEL.buildBayesViewModel({
       r, dose, tau, tInf, nDose: N, levels, steadyState, mic, targetAuc,
+      loading: isFinite(loadingDose) ? { dose: loadingDose, tInf: doses[0].tInf } : null,
       recDose, recExp, curExp, declared: declare,
       demo: {
         age: num('b-age'), sexLabel: sex, tbw: num('b-tbw'),

@@ -174,6 +174,51 @@ c('C36a', v.status === 'OK' && !v.messages.length, 'dose 非有限 → 空 verdi
 v = S.checkInfusionRate(1000, 0);
 c('C36b', v.status === 'OK' && !v.messages.length, 'tInf=0 → 空 verdict（不除以零）');
 
+// ─────────── 通用模型輸出守衛（review 2026-10 #1）───────────
+console.log('\n--- 模型輸出守衛 ---');
+v = S.checkModelOutput({ model: 'matzke', cl: 3.9, perDose: 1000, dailyMg: 2000 });
+c('C40', v.status === 'OK' && !v.messages.length, '合理 CL／劑量 → 無訊息');
+v = S.checkModelOutput({ model: 'matzke', cl: -0.5, perDose: 1000, dailyMg: 2000 });
+c('C41', v.status === 'BLOCK' && !v.allowDoseRecommendation && has(v, 'E_MODEL_OUT_OF_RANGE'), 'CL ≤ 0 → BLOCK');
+v = S.checkModelOutput({ model: 'matzke', cl: 0, perDose: 1000, dailyMg: 2000 });
+c('C41b', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'CL = 0 → BLOCK（邊界）');
+v = S.checkModelOutput({ model: 'matzke', cl: NaN, perDose: 1000, dailyMg: 2000 });
+c('C42', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), 'CL 非有限 → BLOCK');
+v = S.checkModelOutput({ model: 'two-level', cl: 3, perDose: 0, dailyMg: 0 });
+c('C43', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '單次劑量 0 → BLOCK');
+v = S.checkModelOutput({ model: 'two-level', cl: 3, perDose: 500, dailyMg: -1 });
+c('C43b', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '日劑量 ≤ 0 → BLOCK');
+v = S.checkModelOutput({ model: 'bayes', cl: 3, perDose: Infinity, dailyMg: 1000 });
+c('C44', v.status === 'BLOCK' && has(v, 'E_MODEL_OUT_OF_RANGE'), '劑量非有限 → BLOCK');
+v = S.checkModelOutput({ model: 'crass', cl: 0.3, perDose: 250, dailyMg: 250 });
+c('C45', v.status === 'BLOCK' && has(v, 'E_CRASS_CLV_LOW')
+  && v.messages.some((m) => m.code === 'E_CRASS_CLV_LOW' && m.text.indexOf('Matzke') >= 0),
+  'Crass CLV < 0.5 → BLOCK（升級自 warn），提示改用 Matzke + 密集 TDM');
+v = S.checkModelOutput({ model: 'crass', cl: 0.5, perDose: 250, dailyMg: 250 });
+c('C45b', v.status === 'OK' && !has(v, 'E_CRASS_CLV_LOW'), 'Crass CLV = 0.5（門檻）→ 不封鎖');
+v = S.checkModelOutput({ model: 'matzke', cl: 0.3, perDose: 250, dailyMg: 250 });
+c('C45c', !has(v, 'E_CRASS_CLV_LOW'), 'CLV 門檻僅適用 Crass 模型');
+v = S.buildSafetyMessages({ eligibility: { age: 65 }, modelOutput: { model: 'crass', cl: -4.14, perDose: -2000, dailyMg: -2000 } });
+c('C46', v.status === 'BLOCK' && !v.allowCalculation && !v.allowDoseRecommendation
+  && has(v, 'E_MODEL_OUT_OF_RANGE') && has(v, 'E_CRASS_CLV_LOW'),
+  'buildSafetyMessages 合併 modelOutput 守衛');
+
+// 日劑量 > 4500（Rec 13 肥胖上限）→ 對所有病人警示（不限肥胖），不封鎖
+v = S.checkModelOutput({ model: 'matzke', cl: 6, perDose: 1750, dailyMg: 5250 });
+c('C47', v.status === 'WARNING' && v.allowDoseRecommendation && has(v, 'DOSE_DAILY_HIGH'), '日劑量 5250 → WARNING（所有病人）');
+v = S.checkModelOutput({ model: 'two-level', cl: 6, perDose: 1500, dailyMg: 4500 });
+c('C47b', v.status === 'OK' && !has(v, 'DOSE_DAILY_HIGH'), '日劑量 = 4500（門檻）→ 不警示');
+
+// Mode 2 穩態前提（review 2026-10 #3）：未勾選「已達穩態」→ 可算 AUC，但封鎖劑量建議
+v = S.evaluateDataQuality({ steadyStateConfirmed: false }, 2);
+c('C48', v.allowCalculation && !v.allowDoseRecommendation && has(v, 'DQ_M2_NOT_STEADY')
+  && v.messages.some((m) => m.code === 'DQ_M2_NOT_STEADY' && m.text.indexOf('Mode 3') >= 0),
+  'Mode 2 未確認穩態 → 封鎖劑量建議並建議改用 Mode 3');
+v = S.evaluateDataQuality({}, 2);
+c('C48b', !v.allowDoseRecommendation && has(v, 'DQ_M2_NOT_STEADY'), 'Mode 2 未傳穩態旗標 → fail-closed 視為未確認');
+v = S.evaluateDataQuality({ steadyStateConfirmed: true }, 2);
+c('C48c', v.allowDoseRecommendation && !has(v, 'DQ_M2_NOT_STEADY'), 'Mode 2 已確認穩態 → 不封鎖');
+
 // ─────────── merge / buildSafetyMessages ───────────
 console.log('\n--- 合併 ---');
 v = S.buildSafetyMessages({ eligibility: { age: 60, dialysis: true }, auc: 700 });
