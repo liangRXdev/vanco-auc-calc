@@ -335,7 +335,7 @@
       return `<tr class="${rec ? 'is-recommended' : ''}">
         <td>q${o.intervalH}h</td>
         <td>${doseCell}</td>
-        <td>${o.dailyMg}</td>
+        <td>${fmt(o.dailyMg, 0)}</td>
         <td>${fmt(o.projectedPeak, 1)}</td>
         <td>${fmt(o.projectedTrough, 1)}</td>
         <td style="color:${inRange ? 'var(--color-green)' : 'var(--color-amber)'}">${fmt(o.projectedAuc24, 0)}</td>

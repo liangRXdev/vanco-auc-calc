@@ -46,6 +46,7 @@ c('G03', m.sum.blocked && m.sum.status.key !== 'ok' && m.sum.recommendation.regi
   '摘要不再顯示「達標／建議起始」');
 c('G04', !hasDose(m.plan) && m.plan.indexOf('-2000') < 0, '臨床簡版不帶任何劑量');
 c('G05', !isFinite(m.sum.current.auc24), 'BLOCK 時不顯示由負 CL 推得的 AUC');
+c('G05b', m.sum.monitoring.some((x) => x.indexOf('Matzke') >= 0), '下一步明示改用 Matzke + 密集 TDM');
 
 console.log('\n--- #1 Matzke：age 150（繞過輸入範圍，驗模型守衛本身）---');
 m = runMode1({ age: 150, sexMale: true, heightCm: 180, tbw: 80, scr: 1, criticallyIll: true });

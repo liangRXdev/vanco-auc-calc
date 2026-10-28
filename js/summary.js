@@ -178,11 +178,13 @@
       nonSteadyState: has(sf, 'DQ_NON_STEADY'),
       singleLevel: has(sf, 'DQ_SINGLE_LEVEL'),
       m2NotSteady: has(sf, 'DQ_M2_NOT_STEADY'),
+      crassLow: has(sf, 'E_CRASS_CLV_LOW'),
     };
     const out = [];
     if (!canRecommend) {
       out.push('先確認腎功能趨勢、給藥紀錄與採血時間，再重新計算。');
-      if (f.m2NotSteady) out.push('未達穩態：改用 Mode 3（Bayesian）評估，或於同一方案 ≥4 劑後重採雙點。');
+      if (f.crassLow) out.push('改用 Matzke 族群 CL 模型重新計算，並及早採濃度（雙點或 Bayesian）密集 TDM。');
+      else if (f.m2NotSteady) out.push('未達穩態：改用 Mode 3（Bayesian）評估，或於同一方案 ≥4 劑後重採雙點。');
       else if (f.declaredAKI) out.push('腎功能正在變化時，應提早重採濃度，不等待穩態。');
       else out.push('待資料可靠後重新取樣，再評估是否調整。');
     } else if (mode === 1) {
