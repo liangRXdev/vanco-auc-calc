@@ -169,6 +169,7 @@ const blockCases = [
   ['採血在輸注期內', { mode: 2, eligibility: { age: 65 }, concentrations: CONC({ levels: { t1: 0.5 } }), auc: 320 }, 2],
   ['ke 非正', { mode: 2, eligibility: { age: 65 }, concentrations: CONC({ pk: { ke: 0 } }), auc: 320 }, 2],
   ['反算 AUC 非有限', { mode: 2, eligibility: { age: 65 }, concentrations: CONC({ pk: { auc24: NaN } }), auc: 320 }, 2],
+  ['Mode 2 未確認穩態', { mode: 2, eligibility: { age: 65 }, dataQuality: { input: { steadyStateConfirmed: false }, mode: 2 }, auc: 320 }, 2],
   ['模型輸出 CL≤0', { mode: 2, eligibility: { age: 65 }, modelOutput: { model: 'two-level', cl: 0.2, perDose: 0, dailyMg: 0 }, auc: 320 }, 2],
   ['Crass CLV<0.5', { mode: 1, eligibility: { age: 90 }, modelOutput: { model: 'crass', cl: 0.3, perDose: 250, dailyMg: 250 } }, 1],
 ];

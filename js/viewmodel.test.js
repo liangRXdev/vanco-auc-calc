@@ -71,7 +71,8 @@ console.log('\n--- Mode 2 view-model ---');
 const aIn = { dose: 500, tau: 12, tInf: 1, c1: 15, t1: 2, c2: 6, t2: 11, mic: 1 };
 const a = PK.twoLevelAUC(aIn);
 const recOpt = a.intervalOptions.find((o) => o.intervalH === aIn.tau);
-const vA = VM.buildTwoLevelViewModel({ r: a, input: aIn, recOpt, declared: {} });
+// 本案代表「已勾選穩態」的標準情境（2026-10 起 Mode 2 穩態為必填勾選）
+const vA = VM.buildTwoLevelViewModel({ r: a, input: aIn, recOpt, declared: {}, steadyStateConfirmed: true });
 c('V10', a.ok, '前置：twoLevelAUC 反算成功');
 c('V11', vA.regimenCurrent.dose === aIn.dose && vA.regimenCurrent.tau === aIn.tau
   && near(vA.regimenCurrent.dailyMg, a.tddCurrent) && recOpt.doseMg !== aIn.dose,

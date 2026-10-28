@@ -209,6 +209,16 @@ c('C47', v.status === 'WARNING' && v.allowDoseRecommendation && has(v, 'DOSE_DAI
 v = S.checkModelOutput({ model: 'two-level', cl: 6, perDose: 1500, dailyMg: 4500 });
 c('C47b', v.status === 'OK' && !has(v, 'DOSE_DAILY_HIGH'), '日劑量 = 4500（門檻）→ 不警示');
 
+// Mode 2 穩態前提（review 2026-10 #3）：未勾選「已達穩態」→ 可算 AUC，但封鎖劑量建議
+v = S.evaluateDataQuality({ steadyStateConfirmed: false }, 2);
+c('C48', v.allowCalculation && !v.allowDoseRecommendation && has(v, 'DQ_M2_NOT_STEADY')
+  && v.messages.some((m) => m.code === 'DQ_M2_NOT_STEADY' && m.text.indexOf('Mode 3') >= 0),
+  'Mode 2 未確認穩態 → 封鎖劑量建議並建議改用 Mode 3');
+v = S.evaluateDataQuality({}, 2);
+c('C48b', !v.allowDoseRecommendation && has(v, 'DQ_M2_NOT_STEADY'), 'Mode 2 未傳穩態旗標 → fail-closed 視為未確認');
+v = S.evaluateDataQuality({ steadyStateConfirmed: true }, 2);
+c('C48c', v.allowDoseRecommendation && !has(v, 'DQ_M2_NOT_STEADY'), 'Mode 2 已確認穩態 → 不封鎖');
+
 // ─────────── merge / buildSafetyMessages ───────────
 console.log('\n--- 合併 ---');
 v = S.buildSafetyMessages({ eligibility: { age: 60, dialysis: true }, auc: 700 });

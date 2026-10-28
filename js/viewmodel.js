@@ -79,6 +79,7 @@
    *   input    { dose, tau, tInf, c1, t1, c2, t2, mic }
    *   recOpt   主推薦的 intervalOption（維持原間隔）
    *   declared { declaredAKI, declaredUnreliableDoseTiming, declaredUnreliableSampleTiming, pregnant, cysticFibrosis }
+   *   steadyStateConfirmed  使用者是否勾選「已達穩態（≥4 劑同一方案）」（閘門在 safety；此處只決定文案）
    */
   function buildTwoLevelViewModel(i) {
     const r = i.r, x = i.input, rec = i.recOpt, dec = i.declared || {};
@@ -105,8 +106,11 @@
         dec.declaredUnreliableSampleTiming && '採血時間不可靠',
         dec.pregnant && '懷孕',
         dec.cysticFibrosis && 'CF',
+        i.steadyStateConfirmed !== true && '未確認穩態',
       ]),
-      confidenceBaseNote: '穩態雙點量測、取樣時相合理',
+      confidenceBaseNote: i.steadyStateConfirmed === true
+        ? '已確認穩態（≥4 劑同一方案）之雙點量測、取樣時相合理'
+        : '雙點量測（未確認穩態）',
       technical: {
         method: '雙點反算（Sawchuk-Zaske first-order、兩段式 AUC）',
         lines: [

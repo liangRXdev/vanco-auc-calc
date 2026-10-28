@@ -170,7 +170,18 @@
     const i = input || {};
     const m = [];
     let tier = 'High';
-    if (mode === 1) {
+    let allowDoseRecommendation = true;
+    if (mode === 2) {
+      // Sawchuk-Zaske 以「前後 trough 相等」推 Vd、以 AUC_τ×24/τ 外推日暴露，皆以穩態為前提。
+      // 系統無法由兩點判定是否穩態 → 須使用者明確勾選；未勾選（含未傳）一律 fail-closed。
+      if (i.steadyStateConfirmed !== true) {
+        tier = 'Low';
+        allowDoseRecommendation = false;
+        m.push(msg('DQ_M2_NOT_STEADY', 'warn',
+          '未確認已達穩態（同一方案 ≥4 劑）：雙點法的 Vd 與 AUC₂₄ 外推以穩態為前提，'
+          + '量測 AUC 僅供參考、不產生劑量建議。非穩態請改用 Mode 3（Bayesian），或待穩態後重採雙點。'));
+      }
+    } else if (mode === 1) {
       // 經驗起始：無實測濃度，全依族群 PK 推估 → 本質為起始估計，信心 Moderate。
       tier = 'Moderate';
       m.push(msg('DQ_EMPIRIC', 'info',
@@ -195,7 +206,7 @@
           '穩態雙點：CL 資訊量佳（L2 shrinkage ~0.21）→ 信心 High。'));
       }
     }
-    return verdict(m, { confidence: tier });
+    return verdict(m, { confidence: tier, allowDoseRecommendation });
   }
 
   // ---------- B1 Mode 2 濃度守衛 ----------

@@ -352,6 +352,7 @@
       pregnant: $('a-preg').checked,
       cysticFibrosis: $('a-cf').checked,
     };
+    const steadyA = $('a-steady').checked;
     // 主推薦方案：維持原間隔（沿用既有挑法，不新增模型）
     const recOpt = r.intervalOptions.find((o) => o.intervalH === input.tau) || r.intervalOptions[1];
     // Safety 層（eligibility 聲明 + 分布相取樣分級 + AUC 分級）——唯一安全判斷來源。
@@ -360,6 +361,8 @@
     const sf = SAFETY.buildSafetyMessages({
       mode: 2,
       eligibility: declareA,
+      // 穩態前提：未勾選 → safety 封鎖劑量建議並建議改用 Mode 3
+      dataQuality: { input: { steadyStateConfirmed: steadyA }, mode: 2 },
       concentrations: {
         levels: { c1: input.c1, t1: input.t1, c2: input.c2, t2: input.t2 },
         dosing: { tau: input.tau, tInf: input.tInf },
@@ -369,7 +372,7 @@
       modelOutput: { model: 'two-level', cl: r.cl, perDose: recOpt.doseMg, dailyMg: recOpt.dailyMg },
     });
 
-    const viewA = VIEWMODEL.buildTwoLevelViewModel({ r, input, recOpt, declared: declareA });
+    const viewA = VIEWMODEL.buildTwoLevelViewModel({ r, input, recOpt, declared: declareA, steadyStateConfirmed: steadyA });
     const sumA = SUMMARY.buildClinicalSummary(viewA, sf, 2);
     renderSummary($('a-summary'), sumA);
 

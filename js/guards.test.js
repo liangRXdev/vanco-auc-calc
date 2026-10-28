@@ -63,12 +63,13 @@ c('G09', PK.validateEmpiricInput({ age: 150, heightCm: 180, tbw: 80, scr: 1 }).l
   'age 150 → 輸入範圍錯誤（原 -250 mg）');
 
 // ─────────── Mode 2（同 ui.js a-calc 接線）───────────
-function runMode2(input) {
+function runMode2(input, steadyStateConfirmed) {
   const r = PK.twoLevelAUC(input);
   const recOpt = r.intervalOptions.find((x) => x.intervalH === input.tau) || null;
   const sf = S.buildSafetyMessages({
     mode: 2,
     eligibility: {},
+    dataQuality: { input: { steadyStateConfirmed: steadyStateConfirmed !== false }, mode: 2 },
     concentrations: {
       levels: { c1: input.c1, t1: input.t1, c2: input.c2, t2: input.t2 },
       dosing: { tau: input.tau, tInf: input.tInf },
@@ -77,7 +78,7 @@ function runMode2(input) {
     auc: r.auc24,
     modelOutput: { model: 'two-level', cl: r.cl, perDose: recOpt ? recOpt.doseMg : NaN, dailyMg: recOpt ? recOpt.dailyMg : NaN },
   });
-  const view = VM.buildTwoLevelViewModel({ r, input, recOpt, declared: {} });
+  const view = VM.buildTwoLevelViewModel({ r, input, recOpt, declared: {}, steadyStateConfirmed: steadyStateConfirmed !== false });
   const sum = SUM.buildClinicalSummary(view, sf, 2);
   return { r, recOpt, sf, view, sum, plan: SUM.buildClinicalPlan(sum) };
 }
@@ -89,6 +90,18 @@ c('G11', m.sf.status === 'BLOCK' && has(m.sf, 'E_MODEL_OUT_OF_RANGE'), '建議�
 c('G12', m.sum.blocked && !hasDose(m.plan.split('建議：')[1]),
   '臨床簡版「建議」段不帶劑量（現行方案行除外）');
 c('G13', m.view.alternatives.every((a) => a.dose > 0), '劑量為 0 的間隔列不列入替代方案');
+
+console.log('\n--- #3 Mode 2 穩態前提 ---');
+const STD = { dose: 1000, tau: 12, tInf: 1, c1: 20, t1: 3, c2: 7, t2: 11.5, mic: 1 };
+m = runMode2(STD, true);
+c('G20', !m.sum.blocked && m.sum.recommendation.regimen, '前置：已勾選穩態 → 正常給建議');
+m = runMode2(STD, false);
+c('G21', m.sum.blocked && m.sum.blockedReasons.some((x) => x.indexOf('穩態') >= 0)
+  && m.sum.monitoring.some((x) => x.indexOf('Mode 3') >= 0) && !hasDose(m.plan.split('建議：')[1]),
+  '未勾選穩態 → 封鎖劑量建議、下一步建議改用 Mode 3、臨床簡版無劑量');
+c('G22', isFinite(m.sum.current.auc24), '未勾選穩態仍顯示量測 AUC（只擋劑量建議）');
+c('G23', m.view.confidenceBaseNote.indexOf('穩態雙點量測') < 0 && m.view.confidenceFactors.indexOf('未確認穩態') >= 0,
+  'confidenceBaseNote 不再無條件宣稱穩態');
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
