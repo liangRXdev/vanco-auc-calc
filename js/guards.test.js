@@ -65,7 +65,7 @@ c('G09', PK.validateEmpiricInput({ age: 150, heightCm: 180, tbw: 80, scr: 1 }).l
 // ─────────── Mode 2（同 ui.js a-calc 接線）───────────
 function runMode2(input, steadyStateConfirmed) {
   const r = PK.twoLevelAUC(input);
-  const recOpt = r.intervalOptions.find((x) => x.intervalH === input.tau) || null;
+  const recOpt = PK.currentIntervalOption(r, input.tau);
   const sf = S.buildSafetyMessages({
     mode: 2,
     eligibility: {},
@@ -102,6 +102,11 @@ c('G21', m.sum.blocked && m.sum.blockedReasons.some((x) => x.indexOf('穩態') >
 c('G22', isFinite(m.sum.current.auc24), '未勾選穩態仍顯示量測 AUC（只擋劑量建議）');
 c('G23', m.view.confidenceBaseNote.indexOf('穩態雙點量測') < 0 && m.view.confidenceFactors.indexOf('未確認穩態') >= 0,
   'confidenceBaseNote 不再無條件宣稱穩態');
+
+console.log('\n--- #5 Mode 2：τ 36h ---');
+m = runMode2({ dose: 1000, tau: 36, tInf: 1, c1: 30, t1: 3, c2: 10, t2: 35, mic: 1 }, true);
+c('G30', m.recOpt.intervalH === 36 && (m.sum.blocked || m.sum.recommendation.regimen.tau === 36),
+  '主推薦維持現行 q36h（原靜默換成 750 mg q12h）');
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

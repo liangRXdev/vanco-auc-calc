@@ -353,8 +353,8 @@
       cysticFibrosis: $('a-cf').checked,
     };
     const steadyA = $('a-steady').checked;
-    // 主推薦方案：維持原間隔（沿用既有挑法，不新增模型）
-    const recOpt = r.intervalOptions.find((o) => o.intervalH === input.tau) || r.intervalOptions[1];
+    // 主推薦方案：維持原間隔。非標準 τ 由 twoLevelAUC 自算一列，不再退回 q12h。
+    const recOpt = PK.currentIntervalOption(r, input.tau);
     // Safety 層（eligibility 聲明 + 分布相取樣分級 + AUC 分級）——唯一安全判斷來源。
     // AUC 一併送入 classifyAUC，使「AUC>600 不出單行減量建議」由 safety 決定，
     // 不在 UI 另寫一份 aucHigh 規則。
@@ -369,7 +369,7 @@
         pk: { ke: r.ke, halfLife: r.halfLife, auc24: r.auc24 },
       },
       auc: r.auc24,
-      modelOutput: { model: 'two-level', cl: r.cl, perDose: recOpt.doseMg, dailyMg: recOpt.dailyMg },
+      modelOutput: { model: 'two-level', cl: r.cl, perDose: recOpt ? recOpt.doseMg : NaN, dailyMg: recOpt ? recOpt.dailyMg : NaN },
     });
 
     const viewA = VIEWMODEL.buildTwoLevelViewModel({ r, input, recOpt, declared: declareA, steadyStateConfirmed: steadyA });
@@ -406,8 +406,8 @@
     };
     planACustom = null;
     rebuildTextsA();
-    $('sim-dose').value = recOpt.doseMg;
-    $('sim-tau').value = recOpt.intervalH;
+    $('sim-dose').value = recOpt && recOpt.doseMg > 0 ? recOpt.doseMg : input.dose;
+    $('sim-tau').value = input.tau;
     $('sim-out').innerHTML = '';
 
     show('a');

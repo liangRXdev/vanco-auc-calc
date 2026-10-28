@@ -115,5 +115,15 @@ ok('重現案（20M 180cm 80kg SCr 0.2）→ 1000 mg q8h（原 4750 mg q8h）',
   lowScr.maintenanceDose === 1000 && lowScr.maintenanceInterval === 8);
 ok('CrCl 89（案例 A）不封頂、數值不變', e.crclCapped === false && Math.abs(e.crcl - 88.9) < 0.5);
 
+// ─────────── review 2026-10 #5：現行 τ 不在 [8,12,24,48] ───────────
+console.log('\n--- #5 非標準 τ ---');
+const r36 = PK.twoLevelAUC({ dose: 1000, tau: 36, tInf: 1, c1: 30, t1: 3, c2: 10, t2: 35 });
+const o36 = PK.currentIntervalOption(r36, 36);
+ok('τ 36 → intervalOptions 含以現行 τ 自算的一列', r36.intervalOptions.some((o) => o.intervalH === 36));
+ok('τ 36 → 主推薦為 q36h（非靜默換成 q12h）', o36 && o36.intervalH === 36
+  && o36.doseMg === PK.roundDose(r36.tddTarget * 36 / 24));
+ok('τ 36 → 表格依間隔排序', r36.intervalOptions.map((o) => o.intervalH).join(',') === '8,12,24,36,48');
+ok('τ 12（標準）→ 仍為 4 列、主推薦 q12h', r.intervalOptions.length === 4 && PK.currentIntervalOption(r, 12).intervalH === 12);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

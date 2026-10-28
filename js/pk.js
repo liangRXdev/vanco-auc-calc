@@ -252,7 +252,10 @@
     // 5) 比例線性外推：達 AUC 目標中點（500）所需每日總劑量
     const targetMid = (VANCO.AUC_TARGET_MIN + VANCO.AUC_TARGET_MAX) / 2;
     const tddTarget = tddCurrent * (targetMid / auc24);
-    const intervalOptions = VANCO.INTERVALS_H.map((h) => {
+    // 現行 τ 不在標準選項時（如 q36h），以現行 τ 自算一列，供主推薦「維持原間隔」使用
+    const intervals = VANCO.INTERVALS_H.indexOf(tau) >= 0 ? VANCO.INTERVALS_H
+      : VANCO.INTERVALS_H.concat([tau]).sort((a, b) => a - b);
+    const intervalOptions = intervals.map((h) => {
       const perDose = roundDose(tddTarget * (h / 24));
       // 各間隔的穩態峰/谷（隨間隔而異，為選擇間隔的臨床依據；AUC 則與間隔無關）
       const sim = simulateRegimen(perDose, h, tInf, ke, vd, cl, mic);
@@ -279,6 +282,11 @@
       mic,
       warnings: twoLevelWarnings({ auc24, cMinTrue, mic }),
     };
+  }
+
+  /** 主推薦列：與現行 τ 相同的間隔（twoLevelAUC 保證存在）；找不到回 null，不另選其他間隔。 */
+  function currentIntervalOption(r, tau) {
+    return (r && r.intervalOptions || []).find((o) => o.intervalH === tau) || null;
   }
 
   // ---------- 驗證 ----------
@@ -336,7 +344,7 @@
     idealBodyWeight, adjustedBodyWeight, crclDosingWeight, cockcroftGault,
     roundDose, suggestIntervalByCrCl, suggestIntervalByClv, matzkeClVanco,
     crassClVanco, crassVd, crassLoading, crassNomogramRow,
-    empiricDosing, validateEmpiricInput, twoLevelAUC, validateTwoLevel,
+    empiricDosing, validateEmpiricInput, twoLevelAUC, validateTwoLevel, currentIntervalOption,
     steadyStatePeakTrough, simulateRegimen,
   };
 
