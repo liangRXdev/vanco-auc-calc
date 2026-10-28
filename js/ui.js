@@ -533,8 +533,10 @@
     if (!levels.length || levelBad) { alertBayes('請至少填入 1 點有效濃度（濃度 > 0、時刻 ≥ 0）。'); return; }
 
     const tau = num('b-tau'), tInf = num('b-tinf'), dose = num('b-dose'), N = num('b-ndose');
+    // 首劑（負荷）劑量：選填，空白 → NaN → 視同未輸入
+    const loadingDose = num('b-load'), loadingTInf = num('b-load-tinf');
     // 時序前提（tInf < τ、0 ≤ tRel ≤ τ、N 為正整數）不成立 → 重建的給藥史與實際不符，不計算
-    const timingErr = BAYES.validateRegimenTiming({ tau, tInf, nDose: N, levels });
+    const timingErr = BAYES.validateRegimenTiming({ tau, tInf, nDose: N, levels, loadingDose, loadingTInf });
     if (timingErr.length) {
       alertBayes(timingErr, ['請確認給藥間隔、輸注時長、已給劑數與採血時刻（距最近一劑起始）後重新計算。']);
       return;
@@ -556,8 +558,8 @@
     const ibw = PK.idealBodyWeight(sexMale, num('b-height'));
     const cw = PK.crclDosingWeight(num('b-tbw'), ibw);
 
-    // 給藥史：N 劑於 0,τ,…,(N−1)τ；濃度絕對時刻 = 最近一劑起始 + tRel
-    const doses = []; for (let i = 0; i < N; i++) doses.push({ time: i * tau, dose, tInf });
+    // 給藥史：N 劑於 0,τ,…,(N−1)τ（第 1 劑可為負荷量）；濃度絕對時刻 = 最近一劑起始 + tRel
+    const doses = BAYES.buildDoseHistory({ dose, tau, tInf, nDose: N, loadingDose, loadingTInf });
     const lastStart = (N - 1) * tau;
     const obs = levels.map((l) => ({ time: lastStart + l.tRel, conc: l.conc }));
 
@@ -625,6 +627,7 @@
     const sex = sexMale ? '男' : '女';
     const viewB = VIEWMODEL.buildBayesViewModel({
       r, dose, tau, tInf, nDose: N, levels, steadyState, mic, targetAuc,
+      loading: isFinite(loadingDose) ? { dose: loadingDose, tInf: doses[0].tInf } : null,
       recDose, recExp, curExp, declared: declare,
       demo: {
         age: num('b-age'), sexLabel: sex, tbw: num('b-tbw'),

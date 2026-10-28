@@ -180,6 +180,7 @@
         method: 'Bayesian MAP（Goti 2018 二室先驗）',
         lines: [
           `濃度：${lv}`,
+          i.loading ? `首劑（負荷）${i.loading.dose} mg、輸注 ${i.loading.tInf}h（已納入給藥史）` : '首劑（負荷）：未輸入（若實際有給，AUC 會高估）',
           `個體 CL ${f(r.cl, 2)} L/h（先驗 ${f(r.prior.cl, 2)}，η ${shrink(r.eta.cl)}）→ ${clStatus}`,
           `Vc ${f(r.vc, 1)} L、Vp ${f(r.vp, 1)} L、Vss ${f(r.vss, 1)} L、Q ${f(r.q, 1)} L/h`,
           `CrCl ${f(r.crcl, 0)} mL/min；目標函數 Obj ${f(r.objective, 3)}；擬合最大殘差 ${f(r.maxAbsResid, 1)} mg/L`,

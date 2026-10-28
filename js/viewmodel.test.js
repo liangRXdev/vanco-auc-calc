@@ -199,5 +199,10 @@ c('V42', vLow.confidenceFactors.some((x) => inText(x, '0.7') && inText(x, '機�
   'SCr < 0.7 → 影響因子與技術行標示「已以 0.7 代入（機構政策）」');
 c('V43', !vE.confidenceFactors.some((x) => inText(x, '0.7')), 'SCr ≥ 0.7 → 不標示');
 
+// ─────────── review 2026-10 #4 ───────────
+c('V44', mkB({ loading: { dose: 2500, tInf: 2.5 } }).technical.lines.some((x) => inText(x, '首劑（負荷）2500 mg'))
+  && vB.technical.lines.some((x) => inText(x, '未輸入') && inText(x, '高估')),
+  'Mode 3 技術行揭露負荷劑量；未輸入時明示 AUC 會高估');
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
